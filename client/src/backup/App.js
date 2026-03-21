@@ -9,10 +9,10 @@ import './styles/App.css';
 // const SOCKET_URL = 'http://10.153.28.197:5000';
 
 // For PRODUCTION: Replace with your cloud server URL
-const SOCKET_URL = 'https://your-server.onrender.com'; // CHANGE THIS AFTER DEPLOYMENT!
+const SOCKET_URL = 'https://number-game-backent.onrender.com'; // CHANGE THIS AFTER DEPLOYMENT!
 
 // For development, use localhost
-const DEV_URL = 'http://localhost:5000';
+const DEV_URL = 'https://number-game-backent.onrender.com';
 
 // Choose the right URL based on environment
 const SERVER_URL = process.env.NODE_ENV === 'production' ? SOCKET_URL : DEV_URL;

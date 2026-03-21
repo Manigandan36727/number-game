@@ -5,7 +5,7 @@ import GameRoom from './components/GameRoom';
 import GameBoard from './components/GameBoard';
 import './styles/App.css';
 
-const SOCKET_URL = 'http://localhost:5000';
+const SOCKET_URL = 'https://number-game-backend-9j09.onrender.com/';
 
 function App() {
   const [socket, setSocket] = useState(null);

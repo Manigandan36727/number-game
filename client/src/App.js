@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import WaitingRoom from './components/WaitingRoom';
 import GameRoom from './components/GameRoom';
@@ -6,7 +6,7 @@ import GameBoard from './components/GameBoard';
 import './styles/App.css';
 
 // CHANGE THIS TO YOUR RENDER URL AFTER DEPLOYMENT
-const SOCKET_URL = 'http://localhost:5000';
+const SOCKET_URL = 'https://number-game-backent.onrender.com';
 
 function App() {
   const [socket, setSocket] = useState(null);
@@ -25,7 +25,7 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
 
   useEffect(() => {
-    console.log('🔌 Connecting to server at:', SOCKET_URL);
+    console.log('?? Connecting to server at:', SOCKET_URL);
     
     const newSocket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -34,12 +34,12 @@ function App() {
     });
 
     newSocket.on('connect', () => {
-      console.log('✅ Connected to server!');
+      console.log('? Connected to server!');
       setConnectionStatus('connected');
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('❌ Connection error:', error);
+      console.error('? Connection error:', error);
       setConnectionStatus('failed');
       setError('Cannot connect to game server. Make sure the server is running.');
     });
@@ -155,16 +155,16 @@ function App() {
     return (
       <div className="App">
         <header className="app-header">
-          <h1>🎮 Number Guessing Game</h1>
+          <h1>?? Number Guessing Game</h1>
         </header>
         <main className="app-main">
           <div className="error-card">
-            <h2>❌ Cannot Connect to Server</h2>
+            <h2>? Cannot Connect to Server</h2>
             <p>Please check:</p>
             <ul>
-              <li>✅ Server is running</li>
-              <li>✅ Internet connection</li>
-              <li>✅ Try again later</li>
+              <li>? Server is running</li>
+              <li>? Internet connection</li>
+              <li>? Try again later</li>
             </ul>
             <p className="server-address">Server: {SOCKET_URL}</p>
             <button 
@@ -182,9 +182,9 @@ function App() {
   return (
     <div className="App">
       <header className="app-header">
-        <h1>🎮 Number Guessing Game</h1>
+        <h1>?? Number Guessing Game</h1>
         {connectionStatus === 'connected' && (
-          <div className="connection-status">✅ Connected</div>
+          <div className="connection-status">? Connected</div>
         )}
       </header>
 

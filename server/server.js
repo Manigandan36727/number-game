@@ -232,7 +232,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('🌐 NUMBER GUESSING GAME SERVER');
   console.log('=================================');
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🔢 Room codes: 6-digit numbers`);
+  console.log(`🔢 Room codes: 6-digit numbers`);  
   console.log('=================================');
 });
 const path = require("path");
