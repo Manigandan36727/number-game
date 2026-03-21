@@ -28,7 +28,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// API to check if room exists
 app.get('/api/room/:roomId', (req, res) => {
   const roomId = req.params.roomId;
   const exists = gameRooms.has(roomId);
@@ -38,7 +37,6 @@ app.get('/api/room/:roomId', (req, res) => {
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
-  // Create a new game room
   socket.on('create-game', (playerName) => {
     const roomId = generateNumericRoomId();
     const gameState = {
@@ -52,17 +50,16 @@ io.on('connection', (socket) => {
       gameStarted: false,
       currentTurn: null,
       winner: null,
-      guesses: []
+      guesses: [],
+      lastGuess: null
     };
     
     gameRooms.set(roomId, gameState);
     socket.join(roomId);
     socket.emit('game-created', { roomId, playerId: socket.id });
-    
     console.log(`✅ Game created: ${roomId} by ${playerName}`);
   });
 
-  // Join existing game
   socket.on('join-game', ({ roomId, playerName }) => {
     const cleanRoomId = roomId.replace(/\D/g, '');
     const game = gameRooms.get(cleanRoomId);
@@ -86,13 +83,10 @@ io.on('connection', (socket) => {
     
     socket.join(cleanRoomId);
     socket.emit('game-joined', { roomId: cleanRoomId, playerId: socket.id });
-    
     io.to(cleanRoomId).emit('players-updated', game.players);
-    
     console.log(`${playerName} joined room: ${cleanRoomId}`);
   });
 
-  // Set player's number
   socket.on('set-number', ({ roomId, number }) => {
     const game = gameRooms.get(roomId);
     if (!game) return;
@@ -106,21 +100,30 @@ io.on('connection', (socket) => {
       
       if (game.players.length === 2 && game.players.every(p => p.ready)) {
         game.gameStarted = true;
+        // Randomly choose who goes first
         game.currentTurn = game.players[Math.floor(Math.random() * 2)].id;
+        
         io.to(roomId).emit('game-started', {
           currentTurn: game.currentTurn,
           players: game.players.map(p => ({ id: p.id, name: p.name }))
         });
+        
+        const startingPlayer = game.players.find(p => p.id === game.currentTurn);
+        io.to(roomId).emit('game-message', {
+          text: `🎮 Game started! ${startingPlayer.name} goes first.`
+        });
+        
         console.log(`🎮 Game started in room ${roomId}`);
       }
     }
   });
 
-  // Make a guess
-  socket.on('make-guess', ({ roomId, guess, comparison }) => {
+  // Player makes a guess - system automatically calculates clue
+  socket.on('make-guess', ({ roomId, guess }) => {
     const game = gameRooms.get(roomId);
     if (!game || !game.gameStarted || game.winner) return;
     
+    // Check if it's this player's turn
     if (game.currentTurn !== socket.id) {
       socket.emit('error', 'Not your turn');
       return;
@@ -132,13 +135,11 @@ io.on('connection', (socket) => {
     if (!guesser || !opponent) return;
     
     const opponentNumber = opponent.number;
-    let result = '';
+    const guessValue = parseInt(guess);
     
-    if (parseInt(guess) === opponentNumber) {
-      game.winner = {
-        id: socket.id,
-        name: guesser.name
-      };
+    // Check if guess is correct
+    if (guessValue === opponentNumber) {
+      game.winner = { id: socket.id, name: guesser.name };
       
       io.to(roomId).emit('game-over', {
         winner: guesser.name,
@@ -147,57 +148,68 @@ io.on('connection', (socket) => {
       
       console.log(`🏆 ${guesser.name} won in room ${roomId}`);
       
-      setTimeout(() => {
-        gameRooms.delete(roomId);
-      }, 300000);
-      
+      setTimeout(() => gameRooms.delete(roomId), 300000);
     } else {
-      if (comparison === 'above') {
-        result = guess > opponentNumber ? 'correct direction' : 'wrong direction';
-      } else if (comparison === 'below') {
-        result = guess < opponentNumber ? 'correct direction' : 'wrong direction';
+      // Calculate automatic clue based on opponent's number
+      let clue = '';
+      if (opponentNumber > guessValue) {
+        clue = 'above';
+      } else {
+        clue = 'below';
       }
       
+      // Record the guess
       game.guesses.push({
         player: guesser.name,
-        guess,
-        comparison,
-        result,
+        guess: guessValue,
+        clue: clue,
         timestamp: Date.now()
       });
       
+      // Store last guess for display
+      game.lastGuess = {
+        guesser: guesser.name,
+        guess: guessValue,
+        clue: clue
+      };
+      
+      // Switch turn to opponent
       game.currentTurn = opponent.id;
       
+      // Send result to both players
       io.to(roomId).emit('guess-result', {
         guesser: guesser.name,
-        guess,
-        comparison,
-        result,
+        guess: guessValue,
+        clue: clue,
         nextTurn: opponent.id,
-        guesses: game.guesses
+        guesses: game.guesses,
+        lastGuess: game.lastGuess
       });
+      
+      io.to(roomId).emit('game-message', {
+        text: `${guesser.name} guessed ${guessValue}. ${opponent.name}'s turn.`
+      });
+      
+      console.log(`${guesser.name} guessed ${guessValue} → ${clue.toUpperCase()}`);
     }
   });
 
-  // Leave room
   socket.on('leave-room', ({ roomId }) => {
     const game = gameRooms.get(roomId);
     if (game) {
       const playerIndex = game.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== -1) {
+        const playerName = game.players[playerIndex].name;
         game.players.splice(playerIndex, 1);
         io.to(roomId).emit('players-updated', game.players);
-        io.to(roomId).emit('error', 'A player left the game');
+        io.to(roomId).emit('error', `${playerName} left the game`);
         
-        if (game.players.length === 0) {
-          gameRooms.delete(roomId);
-        }
+        if (game.players.length === 0) gameRooms.delete(roomId);
       }
     }
     socket.leave(roomId);
   });
 
-  // Disconnect handler
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     
@@ -218,12 +230,10 @@ io.on('connection', (socket) => {
   });
 });
 
-// Generate 6-digit numeric room ID
 function generateNumericRoomId() {
   const min = 100000;
   const max = 999999;
-  const roomId = Math.floor(Math.random() * (max - min + 1)) + min;
-  return roomId.toString();
+  return (Math.floor(Math.random() * (max - min + 1)) + min).toString();
 }
 
 const PORT = process.env.PORT || 5000;
@@ -232,13 +242,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('🌐 NUMBER GUESSING GAME SERVER');
   console.log('=================================');
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🔢 Room codes: 6-digit numbers`);  
+  console.log(`🔢 Room codes: 6-digit numbers`);
+  console.log(`🎮 Auto-clue: System automatically shows ABOVE/BELOW`);
   console.log('=================================');
-});
-const path = require("path");
-
-app.use(express.static(path.join(__dirname, "../client/build")));
-
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../client/build", "index.html"));
 });

@@ -1,8 +1,7 @@
 ﻿import React, { useState } from 'react';
 
-function GameBoard({ gameState, playerId, onMakeGuess, onReset }) {
+function GameBoard({ gameState, playerId, onMakeGuess, gameMessage, lastGuess, onReset }) {
   const [guess, setGuess] = useState('');
-  const [comparison, setComparison] = useState('');
 
   const { players, currentTurn, winner, guesses } = gameState;
   const currentPlayer = players.find(p => p.id === playerId);
@@ -10,10 +9,15 @@ function GameBoard({ gameState, playerId, onMakeGuess, onReset }) {
   const isMyTurn = currentTurn === playerId;
 
   const handleSubmitGuess = () => {
-    if (guess && comparison) {
-      onMakeGuess(guess, comparison);
+    if (guess && isMyTurn) {
+      onMakeGuess(guess);
       setGuess('');
-      setComparison('');
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && guess && isMyTurn) {
+      handleSubmitGuess();
     }
   };
 
@@ -50,11 +54,38 @@ function GameBoard({ gameState, playerId, onMakeGuess, onReset }) {
       <div className="game-header">
         <div className="turn-indicator">
           {isMyTurn ? (
-            <span className="your-turn">✨ YOUR TURN! ✨</span>
+            <span className="your-turn">✨ YOUR TURN TO GUESS! ✨</span>
           ) : (
-            <span className="opponent-turn">⏳ Waiting for {opponent?.name}...</span>
+            <span className="opponent-turn">⏳ Waiting for {opponent?.name} to guess...</span>
           )}
         </div>
+        
+        {gameMessage && (
+          <div style={{ 
+            background: '#e3f2fd', 
+            padding: '12px', 
+            borderRadius: '10px', 
+            marginTop: '10px',
+            fontSize: '1rem'
+          }}>
+            💬 {gameMessage}
+          </div>
+        )}
+        
+        {lastGuess && lastGuess.guesser !== currentPlayer?.name && (
+          <div style={{ 
+            background: '#fff3e0', 
+            padding: '12px', 
+            borderRadius: '10px', 
+            marginTop: '10px',
+            borderLeft: '4px solid #ff9800'
+          }}>
+            🔍 {lastGuess.guesser} guessed <strong>{lastGuess.guess}</strong> → 
+            <strong style={{ color: lastGuess.clue === 'above' ? '#4caf50' : '#f44336', marginLeft: '5px' }}>
+              {lastGuess.clue === 'above' ? '⬆️ ABOVE' : '⬇️ BELOW'}
+            </strong>
+          </div>
+        )}
         
         <div className="players-info">
           <div className={'player-badge ' + (isMyTurn ? 'active' : '')}>
@@ -69,8 +100,8 @@ function GameBoard({ gameState, playerId, onMakeGuess, onReset }) {
 
       <div className="game-main">
         <div className="guess-section">
-          <h3>🎯 Make Your Guess</h3>
-          <p className="hint">Guess the opponent's number (0-100)</p>
+          <h3>🎯 Guess {opponent?.name}'s Number</h3>
+          <p className="hint">Enter a number between 0-100</p>
           
           <div className="guess-input">
             <input
@@ -79,45 +110,39 @@ function GameBoard({ gameState, playerId, onMakeGuess, onReset }) {
               max="100"
               value={guess}
               onChange={(e) => setGuess(e.target.value)}
+              onKeyPress={handleKeyPress}
               placeholder="ENTER YOUR GUESS"
               disabled={!isMyTurn}
+              autoFocus
               style={{
                 fontSize: '2.5rem',
                 padding: '1.5rem',
                 textAlign: 'center',
-                fontWeight: 'bold'
+                fontWeight: 'bold',
+                width: '100%',
+                borderRadius: '15px',
+                border: '3px solid #e0e0e0'
               }}
             />
-          </div>
-
-          <div className="comparison-buttons">
-            <button
-              className={'comparison-btn ' + (comparison === 'above' ? 'selected' : '')}
-              onClick={() => setComparison('above')}
-              disabled={!isMyTurn || !guess}
-            >
-              ⬆️ ABOVE
-            </button>
-            <button
-              className={'comparison-btn ' + (comparison === 'below' ? 'selected' : '')}
-              onClick={() => setComparison('below')}
-              disabled={!isMyTurn || !guess}
-            >
-              ⬇️ BELOW
-            </button>
           </div>
 
           <button
             className="primary-btn guess-btn"
             onClick={handleSubmitGuess}
-            disabled={!isMyTurn || !guess || !comparison}
+            disabled={!isMyTurn || !guess}
             style={{
               fontSize: '1.5rem',
-              padding: '1.5rem'
+              padding: '1.5rem',
+              marginTop: '1.5rem',
+              width: '100%'
             }}
           >
             SUBMIT GUESS
           </button>
+          
+          <p className="hint" style={{ marginTop: '1rem', color: '#666' }}>
+            After you guess, the system will automatically show if the number is ABOVE or BELOW
+          </p>
         </div>
 
         <div className="guesses-history">
@@ -129,12 +154,9 @@ function GameBoard({ gameState, playerId, onMakeGuess, onReset }) {
               {guesses.map((g, index) => (
                 <div key={index} className="guess-item">
                   <span className="guesser">{g.player}:</span>
-                  <span className="guess-number">{g.guess}</span>
-                  <span className={'comparison ' + g.comparison}>
-                    {g.comparison === 'above' ? '⬆️' : '⬇️'}
-                  </span>
-                  <span className={'result ' + (g.result.includes('correct') ? 'correct' : 'wrong')}>
-                    {g.result}
+                  <span className="guess-number">Guessed {g.guess}</span>
+                  <span className={`clue-display ${g.clue}`}>
+                    {g.clue === 'above' ? '⬆️ ABOVE' : '⬇️ BELOW'}
                   </span>
                 </div>
               ))}

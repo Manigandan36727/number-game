@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import WaitingRoom from './components/WaitingRoom';
 import GameRoom from './components/GameRoom';
 import GameBoard from './components/GameBoard';
 import './styles/App.css';
 
-// CHANGE THIS TO YOUR RENDER URL AFTER DEPLOYMENT
 const SOCKET_URL = 'https://number-game-backent.onrender.com';
 
 function App() {
@@ -23,9 +22,11 @@ function App() {
   const [error, setError] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [gameMessage, setGameMessage] = useState('');
+  const [lastGuess, setLastGuess] = useState(null);
 
   useEffect(() => {
-    console.log('?? Connecting to server at:', SOCKET_URL);
+    console.log('🔌 Connecting to server at:', SOCKET_URL);
     
     const newSocket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -34,14 +35,14 @@ function App() {
     });
 
     newSocket.on('connect', () => {
-      console.log('? Connected to server!');
+      console.log('✅ Connected to server!');
       setConnectionStatus('connected');
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('? Connection error:', error);
+      console.error('❌ Connection error:', error);
       setConnectionStatus('failed');
-      setError('Cannot connect to game server. Make sure the server is running.');
+      setError('Cannot connect to game server.');
     });
 
     setSocket(newSocket);
@@ -70,12 +71,14 @@ function App() {
       }));
     });
 
-    newSocket.on('guess-result', ({ guesser, guess, comparison, result, nextTurn, guesses }) => {
+    newSocket.on('guess-result', ({ guesser, guess, clue, nextTurn, guesses, lastGuess }) => {
       setGameState(prev => ({
         ...prev,
         currentTurn: nextTurn,
         guesses
       }));
+      setLastGuess(lastGuess);
+      setTimeout(() => setLastGuess(null), 5000);
     });
 
     newSocket.on('game-over', ({ winner, correctNumber }) => {
@@ -83,6 +86,11 @@ function App() {
         ...prev,
         winner: { name: winner, correctNumber }
       }));
+    });
+
+    newSocket.on('game-message', ({ text }) => {
+      setGameMessage(text);
+      setTimeout(() => setGameMessage(''), 5000);
     });
 
     newSocket.on('error', (message) => {
@@ -125,12 +133,11 @@ function App() {
     }
   };
 
-  const handleMakeGuess = (guess, comparison) => {
+  const handleMakeGuess = (guess) => {
     if (socket && gameState.roomId) {
       socket.emit('make-guess', {
         roomId: gameState.roomId,
-        guess: parseInt(guess),
-        comparison
+        guess: parseInt(guess)
       });
     }
   };
@@ -149,28 +156,21 @@ function App() {
       winner: null,
       guesses: []
     });
+    setLastGuess(null);
+    setGameMessage('');
   };
 
   if (connectionStatus === 'failed') {
     return (
       <div className="App">
         <header className="app-header">
-          <h1>?? Number Guessing Game</h1>
+          <h1>🎮 Number Guessing Game</h1>
         </header>
         <main className="app-main">
           <div className="error-card">
-            <h2>? Cannot Connect to Server</h2>
-            <p>Please check:</p>
-            <ul>
-              <li>? Server is running</li>
-              <li>? Internet connection</li>
-              <li>? Try again later</li>
-            </ul>
-            <p className="server-address">Server: {SOCKET_URL}</p>
-            <button 
-              className="primary-btn" 
-              onClick={() => window.location.reload()}
-            >
+            <h2>❌ Cannot Connect to Server</h2>
+            <p>Please check your internet connection and try again.</p>
+            <button className="primary-btn" onClick={() => window.location.reload()}>
               Retry Connection
             </button>
           </div>
@@ -182,9 +182,9 @@ function App() {
   return (
     <div className="App">
       <header className="app-header">
-        <h1>?? Number Guessing Game</h1>
+        <h1>🎮 Number Guessing Game</h1>
         {connectionStatus === 'connected' && (
-          <div className="connection-status">? Connected</div>
+          <div className="connection-status">✅ Connected</div>
         )}
       </header>
 
@@ -202,11 +202,7 @@ function App() {
               onKeyPress={handleKeyPress}
               autoFocus
             />
-            <button 
-              className="primary-btn" 
-              onClick={handleSetName}
-              disabled={!nameInput.trim()}
-            >
+            <button className="primary-btn" onClick={handleSetName} disabled={!nameInput.trim()}>
               Continue
             </button>
           </div>
@@ -228,6 +224,8 @@ function App() {
             gameState={gameState}
             playerId={gameState.playerId}
             onMakeGuess={handleMakeGuess}
+            gameMessage={gameMessage}
+            lastGuess={lastGuess}
             onReset={resetGame}
           />
         )}
