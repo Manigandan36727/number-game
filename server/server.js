@@ -235,3 +235,10 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🔢 Room codes: 6-digit numbers`);
   console.log('=================================');
 });
+const path = require("path");
+
+app.use(express.static(path.join(__dirname, "../client/build")));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../client/build", "index.html"));
+});
