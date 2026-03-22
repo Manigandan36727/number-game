@@ -1,22 +1,32 @@
 ﻿import React, { useState } from 'react';
 
-function GameBoard({ gameState, playerId, onMakeGuess, gameMessage, lastGuess, onReset }) {
+function GameBoard({ gameState, playerId, onMakeGuess, onGiveClue, gameMessage, lastGuess, onReset }) {
   const [guess, setGuess] = useState('');
+  const [selectedClue, setSelectedClue] = useState('');
 
-  const { players, currentTurn, winner, guesses } = gameState;
+  const { players, currentTurn, waitingForClue, winner, guesses } = gameState;
   const currentPlayer = players.find(p => p.id === playerId);
   const opponent = players.find(p => p.id !== playerId);
   const isMyTurn = currentTurn === playerId;
+  const isMyTurnToGiveClue = waitingForClue && isMyTurn;
+  const isMyTurnToGuess = !waitingForClue && isMyTurn;
 
   const handleSubmitGuess = () => {
-    if (guess && isMyTurn) {
+    if (guess && isMyTurnToGuess) {
       onMakeGuess(guess);
       setGuess('');
     }
   };
 
+  const handleSubmitClue = () => {
+    if (selectedClue && isMyTurnToGiveClue) {
+      onGiveClue(selectedClue);
+      setSelectedClue('');
+    }
+  };
+
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && guess && isMyTurn) {
+    if (e.key === 'Enter' && guess && isMyTurnToGuess) {
       handleSubmitGuess();
     }
   };
@@ -53,10 +63,17 @@ function GameBoard({ gameState, playerId, onMakeGuess, gameMessage, lastGuess, o
     <div className="game-board">
       <div className="game-header">
         <div className="turn-indicator">
-          {isMyTurn ? (
+          {isMyTurnToGuess && (
             <span className="your-turn">✨ YOUR TURN TO GUESS! ✨</span>
-          ) : (
+          )}
+          {isMyTurnToGiveClue && (
+            <span className="your-turn">📢 YOUR TURN TO GIVE CLUE! 📢</span>
+          )}
+          {!isMyTurn && !waitingForClue && (
             <span className="opponent-turn">⏳ Waiting for {opponent?.name} to guess...</span>
+          )}
+          {!isMyTurn && waitingForClue && (
+            <span className="opponent-turn">⏳ Waiting for {opponent?.name} to give clue...</span>
           )}
         </div>
         
@@ -72,7 +89,7 @@ function GameBoard({ gameState, playerId, onMakeGuess, gameMessage, lastGuess, o
           </div>
         )}
         
-        {lastGuess && lastGuess.guesser !== currentPlayer?.name && (
+        {lastGuess && lastGuess.guesserName !== currentPlayer?.name && !waitingForClue && (
           <div style={{ 
             background: '#fff3e0', 
             padding: '12px', 
@@ -80,10 +97,7 @@ function GameBoard({ gameState, playerId, onMakeGuess, gameMessage, lastGuess, o
             marginTop: '10px',
             borderLeft: '4px solid #ff9800'
           }}>
-            🔍 {lastGuess.guesser} guessed <strong>{lastGuess.guess}</strong> → 
-            <strong style={{ color: lastGuess.clue === 'above' ? '#4caf50' : '#f44336', marginLeft: '5px' }}>
-              {lastGuess.clue === 'above' ? '⬆️ ABOVE' : '⬇️ BELOW'}
-            </strong>
+            🔍 Previous guess: {lastGuess.guesserName} guessed <strong>{lastGuess.guessValue}</strong>
           </div>
         )}
         
@@ -99,64 +113,122 @@ function GameBoard({ gameState, playerId, onMakeGuess, gameMessage, lastGuess, o
       </div>
 
       <div className="game-main">
-        <div className="guess-section">
-          <h3>🎯 Guess {opponent?.name}'s Number</h3>
-          <p className="hint">Enter a number between 0-100</p>
-          
-          <div className="guess-input">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={guess}
-              onChange={(e) => setGuess(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="ENTER YOUR GUESS"
-              disabled={!isMyTurn}
-              autoFocus
-              style={{
-                fontSize: '2.5rem',
-                padding: '1.5rem',
-                textAlign: 'center',
-                fontWeight: 'bold',
-                width: '100%',
-                borderRadius: '15px',
-                border: '3px solid #e0e0e0'
-              }}
-            />
-          </div>
+        {isMyTurnToGuess ? (
+          // GUESS MODE
+          <div className="guess-section">
+            <h3>🎯 Guess {opponent?.name}'s Number</h3>
+            <p className="hint">Enter a number between 0-100</p>
+            
+            <div className="guess-input">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={guess}
+                onChange={(e) => setGuess(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="ENTER YOUR GUESS"
+                autoFocus
+                style={{
+                  fontSize: '2.5rem',
+                  padding: '1.5rem',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+                  width: '100%',
+                  borderRadius: '15px',
+                  border: '3px solid #e0e0e0'
+                }}
+              />
+            </div>
 
-          <button
-            className="primary-btn guess-btn"
-            onClick={handleSubmitGuess}
-            disabled={!isMyTurn || !guess}
-            style={{
-              fontSize: '1.5rem',
-              padding: '1.5rem',
-              marginTop: '1.5rem',
-              width: '100%'
-            }}
-          >
-            SUBMIT GUESS
-          </button>
-          
-          <p className="hint" style={{ marginTop: '1rem', color: '#666' }}>
-            After you guess, the system will automatically show if the number is ABOVE or BELOW
-          </p>
-        </div>
+            <button
+              className="primary-btn guess-btn"
+              onClick={handleSubmitGuess}
+              disabled={!guess}
+              style={{
+                fontSize: '1.5rem',
+                padding: '1.5rem',
+                marginTop: '1.5rem',
+                width: '100%'
+              }}
+            >
+              SUBMIT GUESS
+            </button>
+          </div>
+        ) : isMyTurnToGiveClue ? (
+          // CLUE MODE
+          <div className="clue-section">
+            <h3>📢 Give a Clue About YOUR Number</h3>
+            <p className="hint">
+              {opponent?.name} guessed <strong>{lastGuess?.guessValue}</strong>
+            </p>
+            <p className="hint">
+              Is YOUR number <strong>ABOVE</strong> or <strong>BELOW</strong> {lastGuess?.guessValue}?
+            </p>
+            
+            <div className="comparison-buttons">
+              <button
+                className={'comparison-btn ' + (selectedClue === 'above' ? 'selected' : '')}
+                onClick={() => setSelectedClue('above')}
+                style={{
+                  flex: 1,
+                  padding: '1.5rem',
+                  fontSize: '1.4rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                ⬆️ ABOVE
+              </button>
+              <button
+                className={'comparison-btn ' + (selectedClue === 'below' ? 'selected' : '')}
+                onClick={() => setSelectedClue('below')}
+                style={{
+                  flex: 1,
+                  padding: '1.5rem',
+                  fontSize: '1.4rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                ⬇️ BELOW
+              </button>
+            </div>
+
+            <button
+              className="primary-btn"
+              onClick={handleSubmitClue}
+              disabled={!selectedClue}
+              style={{
+                fontSize: '1.5rem',
+                padding: '1.5rem',
+                marginTop: '1.5rem',
+                width: '100%'
+              }}
+            >
+              SUBMIT CLUE
+            </button>
+          </div>
+        ) : (
+          // WAITING MODE
+          <div className="waiting-section">
+            <div className="loader"></div>
+            <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '1.2rem', color: '#666' }}>
+              Waiting for {opponent?.name}...
+            </p>
+          </div>
+        )}
 
         <div className="guesses-history">
-          <h3>📜 Guess History</h3>
+          <h3>📜 Game History</h3>
           {guesses.length === 0 ? (
-            <p className="no-guesses">No guesses yet</p>
+            <p className="no-guesses">No moves yet</p>
           ) : (
             <div className="guesses-list">
               {guesses.map((g, index) => (
                 <div key={index} className="guess-item">
-                  <span className="guesser">{g.player}:</span>
+                  <span className="guesser">{g.guesser}:</span>
                   <span className="guess-number">Guessed {g.guess}</span>
-                  <span className={`clue-display ${g.clue}`}>
-                    {g.clue === 'above' ? '⬆️ ABOVE' : '⬇️ BELOW'}
+                  <span className={`clue-display ${g.clueGiven}`}>
+                    {g.responder} said: {g.clueGiven === 'above' ? '⬆️ ABOVE' : '⬇️ BELOW'}
                   </span>
                 </div>
               ))}

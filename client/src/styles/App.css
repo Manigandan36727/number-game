@@ -659,3 +659,93 @@ body {
   font-size: 1rem;
   color: #1976d2;
 }
+/* Clue display styles */
+.clue-display {
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.clue-display.above {
+  background: #e8f5e8;
+  color: #2e7d32;
+  border: 1px solid #4caf50;
+}
+
+.clue-display.below {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #f44336;
+}
+
+/* Comparison buttons */
+.comparison-buttons {
+  display: flex;
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.comparison-btn {
+  flex: 1;
+  padding: 1.5rem;
+  border: 3px solid #e0e0e0;
+  background: white;
+  border-radius: 15px;
+  font-size: 1.4rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 600;
+}
+
+.comparison-btn.selected {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.comparison-btn:hover:not(:disabled) {
+  border-color: #667eea;
+}
+
+/* Waiting section */
+.waiting-section {
+  text-align: center;
+  padding: 3rem;
+}
+
+.loader {
+  border: 6px solid #f3f3f3;
+  border-top: 6px solid #667eea;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Clue section */
+.clue-section {
+  background: white;
+  border-radius: 25px;
+  padding: 2.5rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.clue-section h3 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.clue-section .hint {
+  font-size: 1.2rem;
+  margin: 1rem 0;
+  color: #666;
+}

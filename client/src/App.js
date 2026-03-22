@@ -16,6 +16,7 @@ function App() {
     players: [],
     gameStarted: false,
     currentTurn: null,
+    waitingForClue: false,
     winner: null,
     guesses: []
   });
@@ -59,11 +60,12 @@ function App() {
       setGameState(prev => ({ ...prev, players }));
     });
 
-    newSocket.on('game-started', ({ currentTurn, players }) => {
+    newSocket.on('game-started', ({ currentTurn, waitingForClue, players }) => {
       setGameState(prev => ({
         ...prev,
         gameStarted: true,
         currentTurn,
+        waitingForClue,
         players: prev.players.map(p => {
           const updatedPlayer = players.find(up => up.id === p.id);
           return updatedPlayer ? { ...p, name: updatedPlayer.name } : p;
@@ -71,14 +73,23 @@ function App() {
       }));
     });
 
-    newSocket.on('guess-result', ({ guesser, guess, clue, nextTurn, guesses, lastGuess }) => {
+    newSocket.on('guess-made', ({ guesser, guess, waitingFor, lastGuess }) => {
+      setGameState(prev => ({ ...prev, waitingForClue: true }));
+      setLastGuess(lastGuess);
+      setGameMessage(`${guesser} guessed ${guess}. ${waitingFor}, please give a clue.`);
+      setTimeout(() => setGameMessage(''), 5000);
+    });
+
+    newSocket.on('clue-given', ({ responder, clue, nextGuesser, lastGuessValue, guesses }) => {
       setGameState(prev => ({
         ...prev,
-        currentTurn: nextTurn,
+        currentTurn: prev.players.find(p => p.name === nextGuesser)?.id,
+        waitingForClue: false,
         guesses
       }));
-      setLastGuess(lastGuess);
-      setTimeout(() => setLastGuess(null), 5000);
+      setGameMessage(`${responder} said: "My number is ${clue.toUpperCase()} ${lastGuessValue}". ${nextGuesser}'s turn to guess.`);
+      setLastGuess(null);
+      setTimeout(() => setGameMessage(''), 5000);
     });
 
     newSocket.on('game-over', ({ winner, correctNumber }) => {
@@ -134,10 +145,19 @@ function App() {
   };
 
   const handleMakeGuess = (guess) => {
-    if (socket && gameState.roomId) {
+    if (socket && gameState.roomId && !gameState.waitingForClue) {
       socket.emit('make-guess', {
         roomId: gameState.roomId,
         guess: parseInt(guess)
+      });
+    }
+  };
+
+  const handleGiveClue = (clue) => {
+    if (socket && gameState.roomId && gameState.waitingForClue) {
+      socket.emit('give-clue', {
+        roomId: gameState.roomId,
+        clue: clue
       });
     }
   };
@@ -153,6 +173,7 @@ function App() {
       players: [],
       gameStarted: false,
       currentTurn: null,
+      waitingForClue: false,
       winner: null,
       guesses: []
     });
@@ -224,6 +245,7 @@ function App() {
             gameState={gameState}
             playerId={gameState.playerId}
             onMakeGuess={handleMakeGuess}
+            onGiveClue={handleGiveClue}
             gameMessage={gameMessage}
             lastGuess={lastGuess}
             onReset={resetGame}
