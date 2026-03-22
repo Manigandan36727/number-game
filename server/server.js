@@ -35,7 +35,6 @@ app.get('/api/room/:roomId', (req, res) => {
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
-  // Create game
   socket.on('create-game', (playerName) => {
     const roomId = generateNumericRoomId();
     const gameState = {
@@ -60,7 +59,6 @@ io.on('connection', (socket) => {
     console.log(`✅ Game created: ${roomId} by ${playerName}`);
   });
 
-  // Join game
   socket.on('join-game', ({ roomId, playerName }) => {
     const cleanRoomId = roomId.replace(/\D/g, '');
     const game = gameRooms.get(cleanRoomId);
@@ -84,11 +82,12 @@ io.on('connection', (socket) => {
     
     socket.join(cleanRoomId);
     socket.emit('game-joined', { roomId: cleanRoomId, playerId: socket.id });
+    
+    // Broadcast to both players
     io.to(cleanRoomId).emit('players-updated', game.players);
     console.log(`${playerName} joined room: ${cleanRoomId}`);
   });
 
-  // Set number
   socket.on('set-number', ({ roomId, number }) => {
     const game = gameRooms.get(roomId);
     if (!game) return;
@@ -102,17 +101,18 @@ io.on('connection', (socket) => {
       
       if (game.players.length === 2 && game.players.every(p => p.ready)) {
         game.gameStarted = true;
-        // Player 1 goes first (guesses)
         game.currentTurn = game.players[0].id;
         game.waitingForClue = false;
+        
+        const startingPlayer = game.players.find(p => p.id === game.currentTurn);
         
         io.to(roomId).emit('game-started', {
           currentTurn: game.currentTurn,
           waitingForClue: false,
-          players: game.players.map(p => ({ id: p.id, name: p.name }))
+          players: game.players.map(p => ({ id: p.id, name: p.name })),
+          startingPlayer: startingPlayer.name
         });
         
-        const startingPlayer = game.players.find(p => p.id === game.currentTurn);
         io.to(roomId).emit('game-message', {
           text: `🎮 Game started! ${startingPlayer.name} guesses first.`
         });
@@ -122,12 +122,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Player makes a guess
   socket.on('make-guess', ({ roomId, guess }) => {
     const game = gameRooms.get(roomId);
     if (!game || !game.gameStarted || game.winner) return;
     
-    // Check if it's this player's turn and not waiting for clue
     if (game.currentTurn !== socket.id || game.waitingForClue) {
       socket.emit('error', 'Not your turn to guess');
       return;
@@ -141,27 +139,21 @@ io.on('connection', (socket) => {
     const opponentNumber = opponent.number;
     const guessValue = parseInt(guess);
     
-    // Check if guess is correct
     if (guessValue === opponentNumber) {
       game.winner = { id: socket.id, name: guesser.name };
-      
       io.to(roomId).emit('game-over', {
         winner: guesser.name,
         correctNumber: opponentNumber
       });
-      
       console.log(`🏆 ${guesser.name} won in room ${roomId}`);
       setTimeout(() => gameRooms.delete(roomId), 300000);
     } else {
-      // Store the guess and switch to clue mode
       game.lastGuess = {
         guesserId: socket.id,
         guesserName: guesser.name,
-        guessValue: guessValue,
-        opponentNumber: opponentNumber
+        guessValue: guessValue
       };
       
-      // Now it's opponent's turn to give clue
       game.currentTurn = opponent.id;
       game.waitingForClue = true;
       
@@ -180,12 +172,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Player gives clue
   socket.on('give-clue', ({ roomId, clue }) => {
     const game = gameRooms.get(roomId);
     if (!game || !game.gameStarted || game.winner) return;
     
-    // Check if it's this player's turn and waiting for clue
     if (game.currentTurn !== socket.id || !game.waitingForClue) {
       socket.emit('error', 'Not your turn to give clue');
       return;
@@ -199,7 +189,6 @@ io.on('connection', (socket) => {
     const respondersNumber = responder.number;
     const lastGuessValue = game.lastGuess.guessValue;
     
-    // Record the clue
     game.guesses.push({
       guesser: game.lastGuess.guesserName,
       guess: lastGuessValue,
@@ -208,10 +197,8 @@ io.on('connection', (socket) => {
       timestamp: Date.now()
     });
     
-    // Switch back to opponent's turn for guessing
     game.currentTurn = opponent.id;
     game.waitingForClue = false;
-    game.lastGuess = null;
     
     io.to(roomId).emit('clue-given', {
       responder: responder.name,
@@ -225,6 +212,7 @@ io.on('connection', (socket) => {
       text: `${responder.name} said: "My number is ${clue.toUpperCase()} ${lastGuessValue}". ${opponent.name}'s turn to guess.`
     });
     
+    game.lastGuess = null;
     console.log(`${responder.name} gave clue: ${clue.toUpperCase()} ${lastGuessValue}`);
   });
 
@@ -237,7 +225,6 @@ io.on('connection', (socket) => {
         game.players.splice(playerIndex, 1);
         io.to(roomId).emit('players-updated', game.players);
         io.to(roomId).emit('error', `${playerName} left the game`);
-        
         if (game.players.length === 0) gameRooms.delete(roomId);
       }
     }
@@ -246,13 +233,11 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
-    
     gameRooms.forEach((game, roomId) => {
       const playerIndex = game.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== -1) {
         const playerName = game.players[playerIndex].name;
         game.players.splice(playerIndex, 1);
-        
         if (game.players.length === 0) {
           gameRooms.delete(roomId);
         } else {

@@ -114,7 +114,6 @@ function GameBoard({ gameState, playerId, onMakeGuess, onGiveClue, gameMessage, 
 
       <div className="game-main">
         {isMyTurnToGuess ? (
-          // GUESS MODE
           <div className="guess-section">
             <h3>🎯 Guess {opponent?.name}'s Number</h3>
             <p className="hint">Enter a number between 0-100</p>
@@ -156,7 +155,6 @@ function GameBoard({ gameState, playerId, onMakeGuess, onGiveClue, gameMessage, 
             </button>
           </div>
         ) : isMyTurnToGiveClue ? (
-          // CLUE MODE
           <div className="clue-section">
             <h3>📢 Give a Clue About YOUR Number</h3>
             <p className="hint">
@@ -208,7 +206,6 @@ function GameBoard({ gameState, playerId, onMakeGuess, onGiveClue, gameMessage, 
             </button>
           </div>
         ) : (
-          // WAITING MODE
           <div className="waiting-section">
             <div className="loader"></div>
             <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '1.2rem', color: '#666' }}>

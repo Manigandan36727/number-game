@@ -60,17 +60,19 @@ function App() {
       setGameState(prev => ({ ...prev, players }));
     });
 
-    newSocket.on('game-started', ({ currentTurn, waitingForClue, players }) => {
+    newSocket.on('game-started', ({ currentTurn, waitingForClue, players, startingPlayer }) => {
       setGameState(prev => ({
         ...prev,
         gameStarted: true,
         currentTurn,
         waitingForClue,
-        players: prev.players.map(p => {
-          const updatedPlayer = players.find(up => up.id === p.id);
-          return updatedPlayer ? { ...p, name: updatedPlayer.name } : p;
+        players: players.map(p => {
+          const existingPlayer = prev.players.find(ep => ep.id === p.id);
+          return existingPlayer ? { ...existingPlayer, name: p.name } : p;
         })
       }));
+      setGameMessage(`🎮 Game started! ${startingPlayer} guesses first.`);
+      setTimeout(() => setGameMessage(''), 5000);
     });
 
     newSocket.on('guess-made', ({ guesser, guess, waitingFor, lastGuess }) => {
@@ -81,9 +83,10 @@ function App() {
     });
 
     newSocket.on('clue-given', ({ responder, clue, nextGuesser, lastGuessValue, guesses }) => {
+      const nextGuesserId = gameState.players.find(p => p.name === nextGuesser)?.id;
       setGameState(prev => ({
         ...prev,
-        currentTurn: prev.players.find(p => p.name === nextGuesser)?.id,
+        currentTurn: nextGuesserId,
         waitingForClue: false,
         guesses
       }));
@@ -112,7 +115,7 @@ function App() {
     return () => {
       if (newSocket) newSocket.close();
     };
-  }, []);
+  }, [gameState.players]);
 
   const handleSetName = () => {
     if (nameInput.trim()) {
