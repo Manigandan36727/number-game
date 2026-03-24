@@ -16,7 +16,7 @@ function App() {
     players: [],
     gameStarted: false,
     currentTurn: null,
-    waitingForClue: false,
+    phase: 'guess',
     winner: null,
     guesses: []
   });
@@ -25,6 +25,7 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [gameMessage, setGameMessage] = useState('');
   const [lastGuess, setLastGuess] = useState(null);
+  const [autoClue, setAutoClue] = useState('');
 
   useEffect(() => {
     console.log('🔌 Connecting to server at:', SOCKET_URL);
@@ -60,12 +61,12 @@ function App() {
       setGameState(prev => ({ ...prev, players }));
     });
 
-    newSocket.on('game-started', ({ currentTurn, waitingForClue, players, startingPlayer }) => {
+    newSocket.on('game-started', ({ currentTurn, phase, players, startingPlayer }) => {
       setGameState(prev => ({
         ...prev,
         gameStarted: true,
         currentTurn,
-        waitingForClue,
+        phase,
         players: players.map(p => {
           const existingPlayer = prev.players.find(ep => ep.id === p.id);
           return existingPlayer ? { ...existingPlayer, name: p.name } : p;
@@ -75,23 +76,31 @@ function App() {
       setTimeout(() => setGameMessage(''), 5000);
     });
 
-    newSocket.on('guess-made', ({ guesser, guess, waitingFor, lastGuess }) => {
-      setGameState(prev => ({ ...prev, waitingForClue: true }));
+    newSocket.on('guess-made-first-turn', ({ guesser, guess, waitingFor, autoClue, lastGuess }) => {
+      setGameState(prev => ({ ...prev, phase: 'clueAndGuess', currentTurn: prev.players.find(p => p.name === waitingFor)?.id }));
       setLastGuess(lastGuess);
-      setGameMessage(`${guesser} guessed ${guess}. ${waitingFor}, please give a clue.`);
+      setAutoClue(autoClue);
+      setGameMessage(`${guesser} guessed ${guess}. ${waitingFor}, now give a clue and guess.`);
       setTimeout(() => setGameMessage(''), 5000);
     });
 
-    newSocket.on('clue-given', ({ responder, clue, nextGuesser, lastGuessValue, guesses }) => {
-      const nextGuesserId = gameState.players.find(p => p.name === nextGuesser)?.id;
+    newSocket.on('guess-made', ({ guesser, guess, waitingFor, lastGuess }) => {
+      setGameState(prev => ({ ...prev, phase: 'waitingForClueAndGuess', currentTurn: prev.players.find(p => p.name === waitingFor)?.id }));
+      setLastGuess(lastGuess);
+      setGameMessage(`${guesser} guessed ${guess}. ${waitingFor}, please give a clue and then guess.`);
+      setTimeout(() => setGameMessage(''), 5000);
+    });
+
+    newSocket.on('clue-and-guess-result', ({ responder, clue, guess, nextGuesser, autoClue, lastGuessValue, guesses, lastGuess }) => {
       setGameState(prev => ({
         ...prev,
-        currentTurn: nextGuesserId,
-        waitingForClue: false,
+        currentTurn: prev.players.find(p => p.name === nextGuesser)?.id,
+        phase: 'waitingForClueAndGuess',
         guesses
       }));
-      setGameMessage(`${responder} said: "My number is ${clue.toUpperCase()} ${lastGuessValue}". ${nextGuesser}'s turn to guess.`);
-      setLastGuess(null);
+      setLastGuess(lastGuess);
+      setAutoClue(autoClue);
+      setGameMessage(`${responder} said: "My number is ${clue.toUpperCase()} ${lastGuessValue}" and guessed ${guess}. ${nextGuesser}, now give a clue and guess.`);
       setTimeout(() => setGameMessage(''), 5000);
     });
 
@@ -115,7 +124,7 @@ function App() {
     return () => {
       if (newSocket) newSocket.close();
     };
-  }, [gameState.players]);
+  }, []);
 
   const handleSetName = () => {
     if (nameInput.trim()) {
@@ -148,7 +157,7 @@ function App() {
   };
 
   const handleMakeGuess = (guess) => {
-    if (socket && gameState.roomId && !gameState.waitingForClue) {
+    if (socket && gameState.roomId && gameState.phase === 'guess') {
       socket.emit('make-guess', {
         roomId: gameState.roomId,
         guess: parseInt(guess)
@@ -156,11 +165,12 @@ function App() {
     }
   };
 
-  const handleGiveClue = (clue) => {
-    if (socket && gameState.roomId && gameState.waitingForClue) {
-      socket.emit('give-clue', {
+  const handleClueAndGuess = (clue, guess) => {
+    if (socket && gameState.roomId && gameState.phase === 'waitingForClueAndGuess') {
+      socket.emit('clue-and-guess', {
         roomId: gameState.roomId,
-        clue: clue
+        clue: clue,
+        guess: parseInt(guess)
       });
     }
   };
@@ -176,12 +186,13 @@ function App() {
       players: [],
       gameStarted: false,
       currentTurn: null,
-      waitingForClue: false,
+      phase: 'guess',
       winner: null,
       guesses: []
     });
     setLastGuess(null);
     setGameMessage('');
+    setAutoClue('');
   };
 
   if (connectionStatus === 'failed') {
@@ -248,9 +259,10 @@ function App() {
             gameState={gameState}
             playerId={gameState.playerId}
             onMakeGuess={handleMakeGuess}
-            onGiveClue={handleGiveClue}
+            onClueAndGuess={handleClueAndGuess}
             gameMessage={gameMessage}
             lastGuess={lastGuess}
+            autoClue={autoClue}
             onReset={resetGame}
           />
         )}
