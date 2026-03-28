@@ -56,7 +56,7 @@ io.on('connection', (socket) => {
     gameRooms.set(roomId, gameState);
     socket.join(roomId);
     socket.emit('game-created', { roomId, playerId: socket.id });
-    console.log(`✅ Game created: ${roomId} by ${playerName}`);
+    console.log(`Game created: ${roomId} by ${playerName}`);
   });
 
   socket.on('join-game', ({ roomId, playerName }) => {
@@ -88,64 +88,36 @@ io.on('connection', (socket) => {
 
   socket.on('set-number', ({ roomId, number }) => {
     const game = gameRooms.get(roomId);
-    if (!game) {
-      console.log(`❌ Game not found for room: ${roomId}`);
-      return;
-    }
+    if (!game) return;
     
     const player = game.players.find(p => p.id === socket.id);
     if (player) {
       player.number = number;
       player.ready = true;
       
-      console.log(`📝 ${player.name} set number: ${number}`);
-      console.log(`📊 Room ${roomId} status:`);
-      console.log(`   Player 1: ${game.players[0]?.name} - ready: ${game.players[0]?.ready}`);
-      console.log(`   Player 2: ${game.players[1]?.name} - ready: ${game.players[1]?.ready}`);
-      console.log(`   Players count: ${game.players.length}`);
-      
       io.to(roomId).emit('players-updated', game.players);
       
-      // Check if both players are ready
-      const bothPlayersExist = game.players.length === 2;
-      const bothReady = game.players[0]?.ready && game.players[1]?.ready;
-      
-      console.log(`🔍 Both players exist: ${bothPlayersExist}, Both ready: ${bothReady}`);
-      
-      if (bothPlayersExist && bothReady) {
-        console.log('✅✅ BOTH PLAYERS READY! Starting game...');
-        
+      if (game.players.length === 2 && game.players[0].ready && game.players[1].ready) {
         game.gameStarted = true;
-        // Player who joined first (index 0) goes first
         game.currentTurn = game.players[0].id;
         game.phase = 'guess';
-        
-        const startingPlayer = game.players[0].name;
-        
-        console.log(`🎮 Starting game in room ${roomId}`);
-        console.log(`👤 First guesser: ${startingPlayer}`);
         
         io.to(roomId).emit('game-started', {
           currentTurn: game.currentTurn,
           phase: 'guess',
           players: game.players.map(p => ({ id: p.id, name: p.name })),
-          startingPlayer: startingPlayer
+          startingPlayer: game.players[0].name
         });
         
         io.to(roomId).emit('game-message', {
-          text: `🎮 Game started! ${startingPlayer} guesses first.`
+          text: `Game started! ${game.players[0].name} guesses first.`
         });
         
-        console.log(`🎉 Game started event sent to room ${roomId}`);
-      } else {
-        console.log(`⏳ Waiting for both players to set numbers...`);
+        console.log(`Game started in room ${roomId}`);
       }
-    } else {
-      console.log(`❌ Player not found for socket: ${socket.id}`);
     }
   });
 
-  // Player makes a guess (first turn)
   socket.on('make-guess', ({ roomId, guess }) => {
     const game = gameRooms.get(roomId);
     if (!game || !game.gameStarted || game.winner) return;
@@ -163,31 +135,25 @@ io.on('connection', (socket) => {
     const opponentNumber = opponent.number;
     const guessValue = parseInt(guess);
     
-    console.log(`${guesser.name} guessed ${guessValue}, opponent number is ${opponentNumber}`);
-    
-    // Check if guess is correct
     if (guessValue === opponentNumber) {
       game.winner = { id: socket.id, name: guesser.name };
       io.to(roomId).emit('game-over', {
         winner: guesser.name,
         correctNumber: opponentNumber
       });
-      console.log(`🏆 ${guesser.name} won in room ${roomId}`);
+      console.log(`${guesser.name} won in room ${roomId}`);
       setTimeout(() => gameRooms.delete(roomId), 300000);
       return;
     }
     
-    // Store the guess
     game.lastGuess = {
       guesserId: socket.id,
       guesserName: guesser.name,
       guessValue: guessValue
     };
     
-    // Determine auto clue for the opponent
     let autoClue = opponentNumber > guessValue ? 'above' : 'below';
     
-    // Switch to opponent's turn for clue and guess
     game.currentTurn = opponent.id;
     game.phase = 'clueAndGuess';
     
@@ -202,17 +168,14 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('game-message', {
       text: `${guesser.name} guessed ${guessValue}. ${opponent.name}, now give a clue and guess.`
     });
-    
-    console.log(`${guesser.name} guessed ${guessValue} → ${autoClue.toUpperCase()}`);
   });
 
-  // Player gives clue AND then makes a guess (turns 2, 3, 4...)
   socket.on('clue-and-guess', ({ roomId, clue, guess }) => {
     const game = gameRooms.get(roomId);
     if (!game || !game.gameStarted || game.winner) return;
     
     if (game.currentTurn !== socket.id || game.phase !== 'clueAndGuess') {
-      socket.emit('error', 'Not your turn to give clue and guess');
+      socket.emit('error', 'Not your turn');
       return;
     }
     
@@ -224,9 +187,6 @@ io.on('connection', (socket) => {
     const lastGuessValue = game.lastGuess.guessValue;
     const guessValue = parseInt(guess);
     
-    console.log(`${responder.name} gave clue: ${clue} ${lastGuessValue} and guessed ${guessValue}`);
-    
-    // Record the clue
     game.guesses.push({
       guesser: game.lastGuess.guesserName,
       guess: lastGuessValue,
@@ -235,29 +195,25 @@ io.on('connection', (socket) => {
       timestamp: Date.now()
     });
     
-    // Check if the guess is correct
     if (guessValue === opponent.number) {
       game.winner = { id: socket.id, name: responder.name };
       io.to(roomId).emit('game-over', {
         winner: responder.name,
         correctNumber: opponent.number
       });
-      console.log(`🏆 ${responder.name} won in room ${roomId}`);
+      console.log(`${responder.name} won in room ${roomId}`);
       setTimeout(() => gameRooms.delete(roomId), 300000);
       return;
     }
     
-    // Store new guess for next round
     game.lastGuess = {
       guesserId: socket.id,
       guesserName: responder.name,
       guessValue: guessValue
     };
     
-    // Determine auto clue for the opponent
     let autoClue = opponent.number > guessValue ? 'above' : 'below';
     
-    // Switch back to opponent's turn
     game.currentTurn = opponent.id;
     game.phase = 'clueAndGuess';
     
@@ -275,8 +231,6 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('game-message', {
       text: `${responder.name} said: "My number is ${clue.toUpperCase()} ${lastGuessValue}" and guessed ${guessValue}. ${opponent.name}, now give a clue and guess.`
     });
-    
-    console.log(`${responder.name} gave clue: ${clue.toUpperCase()} ${lastGuessValue} and guessed ${guessValue}`);
   });
 
   socket.on('leave-room', ({ roomId }) => {
@@ -321,10 +275,8 @@ function generateNumericRoomId() {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log('=================================');
-  console.log('🌐 NUMBER GUESSING GAME SERVER');
+  console.log('NUMBER GUESSING GAME SERVER');
   console.log('=================================');
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🔢 Room codes: 6-digit numbers`);
-  console.log(`🎮 Game flow: Turn 1: Guess | Turns 2+: Clue + Guess`);
+  console.log(`Server running on port ${PORT}`);
   console.log('=================================');
 });
