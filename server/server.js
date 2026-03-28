@@ -88,19 +88,32 @@ io.on('connection', (socket) => {
 
   socket.on('set-number', ({ roomId, number }) => {
     const game = gameRooms.get(roomId);
-    if (!game) return;
+    if (!game) {
+      console.log(`❌ Game not found for room: ${roomId}`);
+      return;
+    }
     
     const player = game.players.find(p => p.id === socket.id);
     if (player) {
       player.number = number;
       player.ready = true;
       
-      console.log(`${player.name} set number: ${number}`);
+      console.log(`📝 ${player.name} set number: ${number}`);
+      console.log(`📊 Room ${roomId} status:`);
+      console.log(`   Player 1: ${game.players[0]?.name} - ready: ${game.players[0]?.ready}`);
+      console.log(`   Player 2: ${game.players[1]?.name} - ready: ${game.players[1]?.ready}`);
+      console.log(`   Players count: ${game.players.length}`);
+      
       io.to(roomId).emit('players-updated', game.players);
       
       // Check if both players are ready
-      if (game.players.length === 2 && game.players[0].ready && game.players[1].ready) {
-        console.log('✅ Both players ready! Starting game...');
+      const bothPlayersExist = game.players.length === 2;
+      const bothReady = game.players[0]?.ready && game.players[1]?.ready;
+      
+      console.log(`🔍 Both players exist: ${bothPlayersExist}, Both ready: ${bothReady}`);
+      
+      if (bothPlayersExist && bothReady) {
+        console.log('✅✅ BOTH PLAYERS READY! Starting game...');
         
         game.gameStarted = true;
         // Player who joined first (index 0) goes first
@@ -108,6 +121,9 @@ io.on('connection', (socket) => {
         game.phase = 'guess';
         
         const startingPlayer = game.players[0].name;
+        
+        console.log(`🎮 Starting game in room ${roomId}`);
+        console.log(`👤 First guesser: ${startingPlayer}`);
         
         io.to(roomId).emit('game-started', {
           currentTurn: game.currentTurn,
@@ -120,8 +136,12 @@ io.on('connection', (socket) => {
           text: `🎮 Game started! ${startingPlayer} guesses first.`
         });
         
-        console.log(`🎮 Game started in room ${roomId}`);
+        console.log(`🎉 Game started event sent to room ${roomId}`);
+      } else {
+        console.log(`⏳ Waiting for both players to set numbers...`);
       }
+    } else {
+      console.log(`❌ Player not found for socket: ${socket.id}`);
     }
   });
 
