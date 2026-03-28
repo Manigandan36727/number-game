@@ -50,18 +50,27 @@ function App() {
     setSocket(newSocket);
 
     newSocket.on('game-created', ({ roomId, playerId }) => {
+      console.log('Game created:', roomId, playerId);
       setGameState(prev => ({ ...prev, roomId, playerId }));
     });
 
     newSocket.on('game-joined', ({ roomId, playerId }) => {
+      console.log('Game joined:', roomId, playerId);
       setGameState(prev => ({ ...prev, roomId, playerId }));
     });
 
     newSocket.on('players-updated', (players) => {
+      console.log('Players updated:', players);
       setGameState(prev => ({ ...prev, players }));
     });
 
     newSocket.on('game-started', ({ currentTurn, phase, players, startingPlayer }) => {
+      console.log('🎮 Game started event received!');
+      console.log('Current turn:', currentTurn);
+      console.log('Phase:', phase);
+      console.log('Players:', players);
+      console.log('Starting player:', startingPlayer);
+      
       setGameState(prev => ({
         ...prev,
         gameStarted: true,
@@ -76,26 +85,25 @@ function App() {
       setTimeout(() => setGameMessage(''), 5000);
     });
 
-    newSocket.on('guess-made-first-turn', ({ guesser, guess, waitingFor, autoClue, lastGuess }) => {
-      setGameState(prev => ({ ...prev, phase: 'clueAndGuess', currentTurn: prev.players.find(p => p.name === waitingFor)?.id }));
+    newSocket.on('guess-made', ({ guesser, guess, waitingFor, autoClue, lastGuess }) => {
+      console.log('Guess made:', guesser, guess);
+      setGameState(prev => ({
+        ...prev,
+        phase: 'clueAndGuess',
+        currentTurn: prev.players.find(p => p.name === waitingFor)?.id
+      }));
       setLastGuess(lastGuess);
       setAutoClue(autoClue);
       setGameMessage(`${guesser} guessed ${guess}. ${waitingFor}, now give a clue and guess.`);
       setTimeout(() => setGameMessage(''), 5000);
     });
 
-    newSocket.on('guess-made', ({ guesser, guess, waitingFor, lastGuess }) => {
-      setGameState(prev => ({ ...prev, phase: 'waitingForClueAndGuess', currentTurn: prev.players.find(p => p.name === waitingFor)?.id }));
-      setLastGuess(lastGuess);
-      setGameMessage(`${guesser} guessed ${guess}. ${waitingFor}, please give a clue and then guess.`);
-      setTimeout(() => setGameMessage(''), 5000);
-    });
-
     newSocket.on('clue-and-guess-result', ({ responder, clue, guess, nextGuesser, autoClue, lastGuessValue, guesses, lastGuess }) => {
+      console.log('Clue and guess result:', responder, clue, guess);
       setGameState(prev => ({
         ...prev,
         currentTurn: prev.players.find(p => p.name === nextGuesser)?.id,
-        phase: 'waitingForClueAndGuess',
+        phase: 'clueAndGuess',
         guesses
       }));
       setLastGuess(lastGuess);
@@ -105,6 +113,7 @@ function App() {
     });
 
     newSocket.on('game-over', ({ winner, correctNumber }) => {
+      console.log('Game over:', winner, 'won!');
       setGameState(prev => ({
         ...prev,
         winner: { name: winner, correctNumber }
@@ -112,11 +121,13 @@ function App() {
     });
 
     newSocket.on('game-message', ({ text }) => {
+      console.log('Game message:', text);
       setGameMessage(text);
       setTimeout(() => setGameMessage(''), 5000);
     });
 
     newSocket.on('error', (message) => {
+      console.error('Server error:', message);
       setError(message);
       setTimeout(() => setError(''), 5000);
     });
@@ -140,24 +151,28 @@ function App() {
 
   const handleCreateGame = () => {
     if (gameState.playerName && socket) {
+      console.log('Creating game for:', gameState.playerName);
       socket.emit('create-game', gameState.playerName);
     }
   };
 
   const handleJoinGame = (roomId) => {
     if (gameState.playerName && socket) {
+      console.log('Joining game:', roomId, 'as:', gameState.playerName);
       socket.emit('join-game', { roomId, playerName: gameState.playerName });
     }
   };
 
   const handleSetNumber = (number) => {
     if (socket && gameState.roomId) {
+      console.log('Setting number:', number);
       socket.emit('set-number', { roomId: gameState.roomId, number });
     }
   };
 
   const handleMakeGuess = (guess) => {
     if (socket && gameState.roomId && gameState.phase === 'guess') {
+      console.log('Making guess:', guess);
       socket.emit('make-guess', {
         roomId: gameState.roomId,
         guess: parseInt(guess)
@@ -166,7 +181,8 @@ function App() {
   };
 
   const handleClueAndGuess = (clue, guess) => {
-    if (socket && gameState.roomId && gameState.phase === 'waitingForClueAndGuess') {
+    if (socket && gameState.roomId && gameState.phase === 'clueAndGuess') {
+      console.log('Clue and guess:', clue, guess);
       socket.emit('clue-and-guess', {
         roomId: gameState.roomId,
         clue: clue,
@@ -205,6 +221,7 @@ function App() {
           <div className="error-card">
             <h2>❌ Cannot Connect to Server</h2>
             <p>Please check your internet connection and try again.</p>
+            <p className="server-address">Server: {SOCKET_URL}</p>
             <button className="primary-btn" onClick={() => window.location.reload()}>
               Retry Connection
             </button>

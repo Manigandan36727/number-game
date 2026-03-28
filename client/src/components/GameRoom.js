@@ -10,6 +10,7 @@ function GameRoom({ roomId, players, playerId, onSetNumber }) {
   const handleSetNumber = () => {
     const num = parseInt(number);
     if (number && num >= 0 && num <= 100) {
+     console.log('Setting number:', num);
       onSetNumber(num);
       setIsSet(true);
     }

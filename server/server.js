@@ -47,9 +47,8 @@ io.on('connection', (socket) => {
       }],
       gameStarted: false,
       currentTurn: null,
-      phase: 'guess', // 'guess' or 'clueAndGuess'
+      phase: 'guess',
       lastGuess: null,
-      lastClue: null,
       winner: null,
       guesses: []
     };
@@ -96,24 +95,29 @@ io.on('connection', (socket) => {
       player.number = number;
       player.ready = true;
       
+      console.log(`${player.name} set number: ${number}`);
       io.to(roomId).emit('players-updated', game.players);
       
-      if (game.players.length === 2 && game.players.every(p => p.ready)) {
-        game.gameStarted = true;
-        game.currentTurn = game.players[0].id;
-        game.phase = 'guess'; // First turn is only guess
+      // Check if both players are ready
+      if (game.players.length === 2 && game.players[0].ready && game.players[1].ready) {
+        console.log('✅ Both players ready! Starting game...');
         
-        const startingPlayer = game.players.find(p => p.id === game.currentTurn);
+        game.gameStarted = true;
+        // Player who joined first (index 0) goes first
+        game.currentTurn = game.players[0].id;
+        game.phase = 'guess';
+        
+        const startingPlayer = game.players[0].name;
         
         io.to(roomId).emit('game-started', {
           currentTurn: game.currentTurn,
           phase: 'guess',
           players: game.players.map(p => ({ id: p.id, name: p.name })),
-          startingPlayer: startingPlayer.name
+          startingPlayer: startingPlayer
         });
         
         io.to(roomId).emit('game-message', {
-          text: `🎮 Game started! ${startingPlayer.name} guesses first.`
+          text: `🎮 Game started! ${startingPlayer} guesses first.`
         });
         
         console.log(`🎮 Game started in room ${roomId}`);
@@ -121,7 +125,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Player makes a guess (first turn or regular guess)
+  // Player makes a guess (first turn)
   socket.on('make-guess', ({ roomId, guess }) => {
     const game = gameRooms.get(roomId);
     if (!game || !game.gameStarted || game.winner) return;
@@ -139,6 +143,8 @@ io.on('connection', (socket) => {
     const opponentNumber = opponent.number;
     const guessValue = parseInt(guess);
     
+    console.log(`${guesser.name} guessed ${guessValue}, opponent number is ${opponentNumber}`);
+    
     // Check if guess is correct
     if (guessValue === opponentNumber) {
       game.winner = { id: socket.id, name: guesser.name };
@@ -155,62 +161,37 @@ io.on('connection', (socket) => {
     game.lastGuess = {
       guesserId: socket.id,
       guesserName: guesser.name,
-      guessValue: guessValue,
-      opponentNumber: opponentNumber
+      guessValue: guessValue
     };
     
-    // Determine the clue (automatic based on opponent's number)
-    let autoClue = '';
-    if (opponentNumber > guessValue) {
-      autoClue = 'above';
-    } else {
-      autoClue = 'below';
-    }
+    // Determine auto clue for the opponent
+    let autoClue = opponentNumber > guessValue ? 'above' : 'below';
     
-    // Switch to opponent's turn
+    // Switch to opponent's turn for clue and guess
     game.currentTurn = opponent.id;
+    game.phase = 'clueAndGuess';
     
-    if (game.phase === 'guess') {
-      // First turn: only guess, now switch to clueAndGuess mode for next turns
-      game.phase = 'clueAndGuess';
-      
-      io.to(roomId).emit('guess-made-first-turn', {
-        guesser: guesser.name,
-        guess: guessValue,
-        waitingFor: opponent.name,
-        autoClue: autoClue,
-        lastGuess: game.lastGuess
-      });
-      
-      io.to(roomId).emit('game-message', {
-        text: `${guesser.name} guessed ${guessValue}. ${opponent.name}, now it's your turn to give clue AND guess.`
-      });
-      
-    } else {
-      // Regular turn: guess made, now opponent needs to give clue AND guess
-      game.phase = 'waitingForClueAndGuess';
-      
-      io.to(roomId).emit('guess-made', {
-        guesser: guesser.name,
-        guess: guessValue,
-        waitingFor: opponent.name,
-        lastGuess: game.lastGuess
-      });
-      
-      io.to(roomId).emit('game-message', {
-        text: `${guesser.name} guessed ${guessValue}. ${opponent.name}, please give a clue and then guess.`
-      });
-    }
+    io.to(roomId).emit('guess-made', {
+      guesser: guesser.name,
+      guess: guessValue,
+      waitingFor: opponent.name,
+      autoClue: autoClue,
+      lastGuess: game.lastGuess
+    });
     
-    console.log(`${guesser.name} guessed ${guessValue}`);
+    io.to(roomId).emit('game-message', {
+      text: `${guesser.name} guessed ${guessValue}. ${opponent.name}, now give a clue and guess.`
+    });
+    
+    console.log(`${guesser.name} guessed ${guessValue} → ${autoClue.toUpperCase()}`);
   });
 
-  // Player gives clue AND then makes a guess (for turns 2, 3, 4...)
+  // Player gives clue AND then makes a guess (turns 2, 3, 4...)
   socket.on('clue-and-guess', ({ roomId, clue, guess }) => {
     const game = gameRooms.get(roomId);
     if (!game || !game.gameStarted || game.winner) return;
     
-    if (game.currentTurn !== socket.id || game.phase !== 'waitingForClueAndGuess') {
+    if (game.currentTurn !== socket.id || game.phase !== 'clueAndGuess') {
       socket.emit('error', 'Not your turn to give clue and guess');
       return;
     }
@@ -220,9 +201,10 @@ io.on('connection', (socket) => {
     
     if (!responder || !opponent || !game.lastGuess) return;
     
-    const respondersNumber = responder.number;
     const lastGuessValue = game.lastGuess.guessValue;
     const guessValue = parseInt(guess);
+    
+    console.log(`${responder.name} gave clue: ${clue} ${lastGuessValue} and guessed ${guessValue}`);
     
     // Record the clue
     game.guesses.push({
@@ -249,21 +231,15 @@ io.on('connection', (socket) => {
     game.lastGuess = {
       guesserId: socket.id,
       guesserName: responder.name,
-      guessValue: guessValue,
-      opponentNumber: opponent.number
+      guessValue: guessValue
     };
     
-    // Determine automatic clue for the next player
-    let autoClue = '';
-    if (opponent.number > guessValue) {
-      autoClue = 'above';
-    } else {
-      autoClue = 'below';
-    }
+    // Determine auto clue for the opponent
+    let autoClue = opponent.number > guessValue ? 'above' : 'below';
     
     // Switch back to opponent's turn
     game.currentTurn = opponent.id;
-    game.phase = 'waitingForClueAndGuess';
+    game.phase = 'clueAndGuess';
     
     io.to(roomId).emit('clue-and-guess-result', {
       responder: responder.name,
