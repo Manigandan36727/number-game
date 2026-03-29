@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-require('dotenv').config();
 
 const app = express();
 app.use(cors());
@@ -37,7 +36,7 @@ io.on('connection', (socket) => {
         id: socket.id,
         name: playerName,
         number: null,
-        isReady: false
+        ready: false
       }],
       gameStarted: false,
       currentTurn: null,
@@ -71,7 +70,7 @@ io.on('connection', (socket) => {
       id: socket.id,
       name: playerName,
       number: null,
-      isReady: false
+      ready: false
     });
     
     socket.join(cleanRoomId);
@@ -87,15 +86,12 @@ io.on('connection', (socket) => {
     const player = game.players.find(p => p.id === socket.id);
     if (player) {
       player.number = number;
-      player.isReady = true;
+      player.ready = true;
       
-      console.log(`${player.name} set number: ${number}`);
       io.to(roomId).emit('players-updated', game.players);
       
       // Check if both players are ready
-      if (game.players.length === 2 && game.players[0].isReady && game.players[1].isReady) {
-        console.log('BOTH PLAYERS READY! Starting game...');
-        
+      if (game.players.length === 2 && game.players[0].ready && game.players[1].ready) {
         game.gameStarted = true;
         game.currentTurn = game.players[0].id;
         game.phase = 'guess';
@@ -107,9 +103,7 @@ io.on('connection', (socket) => {
           startingPlayer: game.players[0].name
         });
         
-        io.to(roomId).emit('game-message', {
-          text: `🎮 Game started! ${game.players[0].name} guesses first.`
-        });
+        console.log(`GAME STARTED in room ${roomId}`);
       }
     }
   });
@@ -131,8 +125,6 @@ io.on('connection', (socket) => {
     const guessValue = parseInt(guess);
     const opponentNumber = opponent.number;
     
-    console.log(`${guesser.name} guessed ${guessValue}, opponent number is ${opponentNumber}`);
-    
     if (guessValue === opponentNumber) {
       game.winner = { id: socket.id, name: guesser.name };
       io.to(roomId).emit('game-over', {
@@ -142,7 +134,7 @@ io.on('connection', (socket) => {
       return;
     }
     
-    const autoClue = opponentNumber > guessValue ? 'above' : 'below';
+    const clue = opponentNumber > guessValue ? 'above' : 'below';
     
     game.lastGuess = {
       guesserName: guesser.name,
@@ -156,7 +148,7 @@ io.on('connection', (socket) => {
       guesser: guesser.name,
       guess: guessValue,
       waitingFor: opponent.name,
-      autoClue: autoClue,
+      autoClue: clue,
       lastGuess: game.lastGuess
     });
   });
@@ -218,16 +210,6 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
-    gameRooms.forEach((game, roomId) => {
-      const index = game.players.findIndex(p => p.id === socket.id);
-      if (index !== -1) {
-        game.players.splice(index, 1);
-        io.to(roomId).emit('players-updated', game.players);
-        if (game.players.length === 0) {
-          gameRooms.delete(roomId);
-        }
-      }
-    });
   });
 });
 

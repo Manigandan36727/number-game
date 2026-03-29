@@ -12,7 +12,7 @@ import './styles/App.css';
 const SOCKET_URL = 'https://number-game-backent.onrender.com'; // CHANGE THIS AFTER DEPLOYMENT!
 
 // For development, use localhost
-const DEV_URL = 'https://number-game-backent.onrender.com';
+const DEV_URL = 'https://number-game-frontend.onrender.com';
 
 // Choose the right URL based on environment
 const SERVER_URL = process.env.NODE_ENV === 'production' ? SOCKET_URL : DEV_URL;

@@ -1,204 +1,276 @@
 ﻿import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
-import WaitingRoom from './components/WaitingRoom';
-import GameRoom from './components/GameRoom';
-import GameBoard from './components/GameBoard';
 import './styles/App.css';
 
-const SOCKET_URL = 'https://number-game-backent.onrender.com';
+const SERVER_URL = 'https://number-game-backent.onrender.com';
 
 function App() {
   const [socket, setSocket] = useState(null);
-  const [gameState, setGameState] = useState({
-    roomId: null,
-    playerId: null,
-    playerName: '',
-    players: [],
-    gameStarted: false,
-    currentTurn: null,
-    phase: 'guess',
-    winner: null,
-    guesses: []
-  });
-  const [error, setError] = useState('');
+  const [roomId, setRoomId] = useState(null);
+  const [playerId, setPlayerId] = useState(null);
+  const [playerName, setPlayerName] = useState('');
   const [nameInput, setNameInput] = useState('');
-  const [connectionStatus, setConnectionStatus] = useState('connecting');
-  const [gameMessage, setGameMessage] = useState('');
+  const [players, setPlayers] = useState([]);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [currentTurn, setCurrentTurn] = useState(null);
+  const [phase, setPhase] = useState('guess');
+  const [winner, setWinner] = useState(null);
+  const [guesses, setGuesses] = useState([]);
   const [lastGuess, setLastGuess] = useState(null);
   const [autoClue, setAutoClue] = useState('');
+  const [error, setError] = useState('');
+  const [gameMessage, setGameMessage] = useState('');
+  const [guessInput, setGuessInput] = useState('');
+  const [clueInput, setClueInput] = useState('');
+  const [clueGuessInput, setClueGuessInput] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
 
   useEffect(() => {
-    const newSocket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling']
-    });
-
+    const newSocket = io(SERVER_URL);
+    
     newSocket.on('connect', () => {
-      console.log('Connected to server');
       setConnectionStatus('connected');
     });
-
+    
     newSocket.on('connect_error', () => {
       setConnectionStatus('failed');
     });
-
+    
     newSocket.on('game-created', ({ roomId, playerId }) => {
-      setGameState(prev => ({ ...prev, roomId, playerId }));
+      setRoomId(roomId);
+      setPlayerId(playerId);
     });
-
+    
     newSocket.on('game-joined', ({ roomId, playerId }) => {
-      setGameState(prev => ({ ...prev, roomId, playerId }));
+      setRoomId(roomId);
+      setPlayerId(playerId);
     });
-
-    newSocket.on('players-updated', (players) => {
-      setGameState(prev => ({ ...prev, players }));
+    
+    newSocket.on('players-updated', (updatedPlayers) => {
+      setPlayers(updatedPlayers);
     });
-
+    
     newSocket.on('game-started', (data) => {
-      console.log('Game started!', data);
-      setGameState(prev => ({
-        ...prev,
-        gameStarted: true,
-        currentTurn: data.currentTurn,
-        phase: data.phase,
-        players: data.players
-      }));
-      setGameMessage(`Game started! ${data.startingPlayer} guesses first.`);
+      setGameStarted(true);
+      setCurrentTurn(data.currentTurn);
+      setPhase(data.phase);
+      setPlayers(data.players);
+      setGameMessage(`${data.startingPlayer} guesses first!`);
       setTimeout(() => setGameMessage(''), 3000);
     });
-
+    
     newSocket.on('guess-made', ({ guesser, guess, waitingFor, autoClue, lastGuess }) => {
-      setGameState(prev => ({
-        ...prev,
-        phase: 'clueAndGuess',
-        currentTurn: prev.players.find(p => p.name === waitingFor)?.id
-      }));
+      setPhase('clueAndGuess');
+      setCurrentTurn(players.find(p => p.name === waitingFor)?.id);
       setLastGuess(lastGuess);
       setAutoClue(autoClue);
-      setGameMessage(`${guesser} guessed ${guess}. Your turn!`);
+      setGameMessage(`${guesser} guessed ${guess}! Your turn to give clue and guess.`);
       setTimeout(() => setGameMessage(''), 3000);
     });
-
-    newSocket.on('clue-and-guess-result', ({ responder, clue, guess, nextGuesser, autoClue, guesses, lastGuess }) => {
-      setGameState(prev => ({
-        ...prev,
-        currentTurn: prev.players.find(p => p.name === nextGuesser)?.id,
-        phase: 'clueAndGuess',
-        guesses
-      }));
+    
+    newSocket.on('clue-and-guess-result', ({ responder, clue, guess, nextGuesser, guesses, lastGuess }) => {
+      setCurrentTurn(players.find(p => p.name === nextGuesser)?.id);
+      setPhase('clueAndGuess');
+      setGuesses(guesses);
       setLastGuess(lastGuess);
-      setAutoClue(autoClue);
       setGameMessage(`${responder} gave clue: ${clue}. Your turn!`);
       setTimeout(() => setGameMessage(''), 3000);
     });
-
+    
     newSocket.on('game-over', ({ winner, correctNumber }) => {
-      setGameState(prev => ({
-        ...prev,
-        winner: { name: winner, correctNumber }
-      }));
+      setWinner({ name: winner, correctNumber });
     });
-
+    
     newSocket.on('error', (msg) => {
       setError(msg);
       setTimeout(() => setError(''), 3000);
     });
-
+    
     setSocket(newSocket);
-
+    
     return () => newSocket.close();
-  }, []);
+  }, [players]);
 
   const handleSetName = () => {
     if (nameInput.trim()) {
-      setGameState(prev => ({ ...prev, playerName: nameInput }));
+      setPlayerName(nameInput);
     }
   };
 
   const handleCreateGame = () => {
-    if (gameState.playerName && socket) {
-      socket.emit('create-game', gameState.playerName);
+    if (playerName && socket) {
+      socket.emit('create-game', playerName);
     }
   };
 
-  const handleJoinGame = (roomId) => {
-    if (gameState.playerName && socket) {
-      socket.emit('join-game', { roomId, playerName: gameState.playerName });
+  const handleJoinGame = (enteredRoomId) => {
+    if (playerName && socket) {
+      socket.emit('join-game', { roomId: enteredRoomId, playerName });
     }
   };
 
   const handleSetNumber = (number) => {
-    if (socket && gameState.roomId) {
-      socket.emit('set-number', { roomId: gameState.roomId, number });
+    if (socket && roomId) {
+      socket.emit('set-number', { roomId, number });
     }
   };
 
-  const handleMakeGuess = (guess) => {
-    if (socket && gameState.roomId && gameState.phase === 'guess') {
-      socket.emit('make-guess', { roomId: gameState.roomId, guess: parseInt(guess) });
+  const handleMakeGuess = () => {
+    if (socket && roomId && guessInput) {
+      socket.emit('make-guess', { roomId, guess: parseInt(guessInput) });
+      setGuessInput('');
     }
   };
 
-  const handleClueAndGuess = (clue, guess) => {
-    if (socket && gameState.roomId && gameState.phase === 'clueAndGuess') {
-      socket.emit('clue-and-guess', { roomId: gameState.roomId, clue, guess: parseInt(guess) });
+  const handleClueAndGuess = () => {
+    if (socket && roomId && clueInput && clueGuessInput) {
+      socket.emit('clue-and-guess', { roomId, clue: clueInput, guess: parseInt(clueGuessInput) });
+      setClueInput('');
+      setClueGuessInput('');
     }
-  };
-
-  const resetGame = () => {
-    setGameState({
-      roomId: null,
-      playerId: null,
-      playerName: gameState.playerName,
-      players: [],
-      gameStarted: false,
-      currentTurn: null,
-      phase: 'guess',
-      winner: null,
-      guesses: []
-    });
-    setLastGuess(null);
-    setGameMessage('');
-    setAutoClue('');
   };
 
   if (connectionStatus === 'failed') {
+    return <div className="container"><h1>Cannot connect to server. Please try again.</h1><button onClick={() => window.location.reload()}>Retry</button></div>;
+  }
+
+  // Name Entry Screen
+  if (!playerName) {
     return (
-      <div className="App">
-        <header><h1>Number Guessing Game</h1></header>
-        <main>
-          <div className="error-card">
-            <h2>Cannot Connect to Server</h2>
-            <button onClick={() => window.location.reload()}>Retry</button>
+      <div className="container">
+        <h1>🎮 Number Guessing Game</h1>
+        <div className="card">
+          <h2>Enter Your Name</h2>
+          <input type="text" placeholder="Your name" value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSetName()} />
+          <button onClick={handleSetName}>Continue</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Waiting Room (Create or Join)
+  if (!roomId) {
+    return (
+      <div className="container">
+        <h1>🎮 Number Guessing Game</h1>
+        <div className="card">
+          <h2>Welcome, {playerName}!</h2>
+          <button onClick={handleCreateGame}>Create Game Room</button>
+          <div className="divider">OR</div>
+          <input type="text" placeholder="Enter 6-digit Room Code" maxLength="6" id="joinRoomInput" />
+          <button onClick={() => handleJoinGame(document.getElementById('joinRoomInput').value)}>Join Game</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Game Room (Set Number)
+  if (!gameStarted) {
+    const currentPlayer = players.find(p => p.id === playerId);
+    const bothReady = players.length === 2 && players.every(p => p.ready);
+    const [number, setNumber] = useState('');
+    
+    return (
+      <div className="container">
+        <h1>🎮 Number Guessing Game</h1>
+        <div className="card">
+          <h2>Game Room: {roomId}</h2>
+          <p>Share this code with your friend</p>
+          <div className="players">
+            {players.map(p => (
+              <div key={p.id} className={`player ${p.ready ? 'ready' : ''}`}>
+                <strong>{p.name}</strong> {p.ready ? '✅ Ready' : '⏳ Setting number...'}
+              </div>
+            ))}
           </div>
-        </main>
+          {!currentPlayer?.ready ? (
+            <div>
+              <h3>Set Your Secret Number</h3>
+              <input type="number" placeholder="0-100" value={number} onChange={(e) => setNumber(e.target.value)} />
+              <button onClick={() => handleSetNumber(parseInt(number))}>Set Number</button>
+            </div>
+          ) : !bothReady ? (
+            <p>Waiting for opponent to set their number...</p>
+          ) : null}
+          {bothReady && <p>Game starting...</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // Game Board
+  const currentPlayer = players.find(p => p.id === playerId);
+  const opponent = players.find(p => p.id !== playerId);
+  const isMyTurn = currentTurn === playerId;
+  const isGuessPhase = phase === 'guess' && isMyTurn;
+  const isCluePhase = phase === 'clueAndGuess' && isMyTurn;
+
+  if (winner) {
+    const isWinner = winner.name === currentPlayer?.name;
+    return (
+      <div className="container">
+        <h1>🎮 Number Guessing Game</h1>
+        <div className="card">
+          <h2>Game Over!</h2>
+          {isWinner ? <h1 className="winner">🎉 YOU WIN! 🎉</h1> : <h1 className="loser">{winner.name} wins!</h1>}
+          <p>The correct number was: <strong>{winner.correctNumber}</strong></p>
+          <button onClick={() => window.location.reload()}>Play Again</button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="App">
-      <header className="app-header">
-        <h1>Number Guessing Game</h1>
-      </header>
+    <div className="container">
+      <h1>🎮 Number Guessing Game</h1>
+      {gameMessage && <div className="message">{gameMessage}</div>}
+      {error && <div className="error">{error}</div>}
+      
+      <div className="game-header">
+        <div className="turn-indicator">
+          {isGuessPhase && <span className="your-turn">✨ YOUR TURN TO GUESS! ✨</span>}
+          {isCluePhase && <span className="your-turn">📢 GIVE CLUE & GUESS! 📢</span>}
+          {!isMyTurn && <span>⏳ Waiting for {opponent?.name}...</span>}
+        </div>
+        <div className="players-info">
+          <span className={isMyTurn ? 'active' : ''}>You: {currentPlayer?.name}</span>
+          <span>VS</span>
+          <span>Opponent: {opponent?.name}</span>
+        </div>
+      </div>
 
-      {error && <div className="error-message">{error}</div>}
-      {gameMessage && <div className="game-message">{gameMessage}</div>}
-
-      <main>
-        {!gameState.playerName ? (
-          <div className="name-input-container">
-            <h2>Enter Your Name</h2>
-            <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSetName()} />
-            <button onClick={handleSetName}>Continue</button>
+      <div className="game-board">
+        {isGuessPhase ? (
+          <div className="guess-section">
+            <h2>Guess {opponent?.name}'s Number</h2>
+            <input type="number" placeholder="Enter your guess (0-100)" value={guessInput} onChange={(e) => setGuessInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleMakeGuess()} />
+            <button onClick={handleMakeGuess}>SUBMIT GUESS</button>
           </div>
-        ) : !gameState.roomId ? (
-          <WaitingRoom playerName={gameState.playerName} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame} />
-        ) : !gameState.gameStarted ? (
-          <GameRoom roomId={gameState.roomId} players={gameState.players} playerId={gameState.playerId} onSetNumber={handleSetNumber} />
+        ) : isCluePhase ? (
+          <div className="clue-section">
+            <h2>Give a Clue About YOUR Number</h2>
+            <p>{opponent?.name} guessed: <strong>{lastGuess?.guessValue}</strong></p>
+            <div className="clue-buttons">
+              <button className={clueInput === 'above' ? 'selected' : ''} onClick={() => setClueInput('above')}>⬆️ ABOVE</button>
+              <button className={clueInput === 'below' ? 'selected' : ''} onClick={() => setClueInput('below')}>⬇️ BELOW</button>
+            </div>
+            <h2>Now Guess {opponent?.name}'s Number</h2>
+            <input type="number" placeholder="Enter your guess (0-100)" value={clueGuessInput} onChange={(e) => setClueGuessInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleClueAndGuess()} />
+            <button onClick={handleClueAndGuess}>SUBMIT CLUE & GUESS</button>
+          </div>
         ) : (
-          <GameBoard gameState={gameState} playerId={gameState.playerId} onMakeGuess={handleMakeGuess} onClueAndGuess={handleClueAndGuess} lastGuess={lastGuess} autoClue={autoClue} onReset={resetGame} />
+          <div className="waiting">Waiting for {opponent?.name}...</div>
         )}
-      </main>
+
+        <div className="history">
+          <h3>📜 Game History</h3>
+          {guesses.length === 0 ? <p>No moves yet</p> : guesses.map((g, i) => (
+            <div key={i} className="history-item">
+              <strong>{g.guesser}</strong> guessed {g.guess} → <strong>{g.responder}</strong> said: {g.clueGiven === 'above' ? '⬆️ ABOVE' : '⬇️ BELOW'}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
