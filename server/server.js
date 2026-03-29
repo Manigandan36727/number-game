@@ -26,24 +26,18 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/api/room/:roomId', (req, res) => {
-  const roomId = req.params.roomId;
-  const exists = gameRooms.has(roomId);
-  res.json({ exists, roomId });
-});
-
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
+  console.log('Client connected:', socket.id);
 
   socket.on('create-game', (playerName) => {
-    const roomId = generateNumericRoomId();
+    const roomId = Math.floor(100000 + Math.random() * 900000).toString();
     const gameState = {
       roomId,
       players: [{
         id: socket.id,
         name: playerName,
         number: null,
-        ready: false
+        isReady: false
       }],
       gameStarted: false,
       currentTurn: null,
@@ -77,7 +71,7 @@ io.on('connection', (socket) => {
       id: socket.id,
       name: playerName,
       number: null,
-      ready: false
+      isReady: false
     });
     
     socket.join(cleanRoomId);
@@ -93,11 +87,15 @@ io.on('connection', (socket) => {
     const player = game.players.find(p => p.id === socket.id);
     if (player) {
       player.number = number;
-      player.ready = true;
+      player.isReady = true;
       
+      console.log(`${player.name} set number: ${number}`);
       io.to(roomId).emit('players-updated', game.players);
       
-      if (game.players.length === 2 && game.players[0].ready && game.players[1].ready) {
+      // Check if both players are ready
+      if (game.players.length === 2 && game.players[0].isReady && game.players[1].isReady) {
+        console.log('BOTH PLAYERS READY! Starting game...');
+        
         game.gameStarted = true;
         game.currentTurn = game.players[0].id;
         game.phase = 'guess';
@@ -110,10 +108,8 @@ io.on('connection', (socket) => {
         });
         
         io.to(roomId).emit('game-message', {
-          text: `Game started! ${game.players[0].name} guesses first.`
+          text: `🎮 Game started! ${game.players[0].name} guesses first.`
         });
-        
-        console.log(`Game started in room ${roomId}`);
       }
     }
   });
@@ -132,8 +128,10 @@ io.on('connection', (socket) => {
     
     if (!guesser || !opponent) return;
     
-    const opponentNumber = opponent.number;
     const guessValue = parseInt(guess);
+    const opponentNumber = opponent.number;
+    
+    console.log(`${guesser.name} guessed ${guessValue}, opponent number is ${opponentNumber}`);
     
     if (guessValue === opponentNumber) {
       game.winner = { id: socket.id, name: guesser.name };
@@ -141,18 +139,15 @@ io.on('connection', (socket) => {
         winner: guesser.name,
         correctNumber: opponentNumber
       });
-      console.log(`${guesser.name} won in room ${roomId}`);
-      setTimeout(() => gameRooms.delete(roomId), 300000);
       return;
     }
     
+    const autoClue = opponentNumber > guessValue ? 'above' : 'below';
+    
     game.lastGuess = {
-      guesserId: socket.id,
       guesserName: guesser.name,
       guessValue: guessValue
     };
-    
-    let autoClue = opponentNumber > guessValue ? 'above' : 'below';
     
     game.currentTurn = opponent.id;
     game.phase = 'clueAndGuess';
@@ -163,10 +158,6 @@ io.on('connection', (socket) => {
       waitingFor: opponent.name,
       autoClue: autoClue,
       lastGuess: game.lastGuess
-    });
-    
-    io.to(roomId).emit('game-message', {
-      text: `${guesser.name} guessed ${guessValue}. ${opponent.name}, now give a clue and guess.`
     });
   });
 
@@ -184,35 +175,31 @@ io.on('connection', (socket) => {
     
     if (!responder || !opponent || !game.lastGuess) return;
     
-    const lastGuessValue = game.lastGuess.guessValue;
     const guessValue = parseInt(guess);
+    const opponentNumber = opponent.number;
     
     game.guesses.push({
       guesser: game.lastGuess.guesserName,
-      guess: lastGuessValue,
+      guess: game.lastGuess.guessValue,
       clueGiven: clue,
-      responder: responder.name,
-      timestamp: Date.now()
+      responder: responder.name
     });
     
-    if (guessValue === opponent.number) {
+    if (guessValue === opponentNumber) {
       game.winner = { id: socket.id, name: responder.name };
       io.to(roomId).emit('game-over', {
         winner: responder.name,
-        correctNumber: opponent.number
+        correctNumber: opponentNumber
       });
-      console.log(`${responder.name} won in room ${roomId}`);
-      setTimeout(() => gameRooms.delete(roomId), 300000);
       return;
     }
     
+    const autoClue = opponentNumber > guessValue ? 'above' : 'below';
+    
     game.lastGuess = {
-      guesserId: socket.id,
       guesserName: responder.name,
       guessValue: guessValue
     };
-    
-    let autoClue = opponent.number > guessValue ? 'above' : 'below';
     
     game.currentTurn = opponent.id;
     game.phase = 'clueAndGuess';
@@ -223,60 +210,28 @@ io.on('connection', (socket) => {
       guess: guessValue,
       nextGuesser: opponent.name,
       autoClue: autoClue,
-      lastGuessValue: lastGuessValue,
+      lastGuessValue: game.lastGuess.guessValue,
       guesses: game.guesses,
       lastGuess: game.lastGuess
     });
-    
-    io.to(roomId).emit('game-message', {
-      text: `${responder.name} said: "My number is ${clue.toUpperCase()} ${lastGuessValue}" and guessed ${guessValue}. ${opponent.name}, now give a clue and guess.`
-    });
-  });
-
-  socket.on('leave-room', ({ roomId }) => {
-    const game = gameRooms.get(roomId);
-    if (game) {
-      const playerIndex = game.players.findIndex(p => p.id === socket.id);
-      if (playerIndex !== -1) {
-        const playerName = game.players[playerIndex].name;
-        game.players.splice(playerIndex, 1);
-        io.to(roomId).emit('players-updated', game.players);
-        io.to(roomId).emit('error', `${playerName} left the game`);
-        if (game.players.length === 0) gameRooms.delete(roomId);
-      }
-    }
-    socket.leave(roomId);
   });
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     gameRooms.forEach((game, roomId) => {
-      const playerIndex = game.players.findIndex(p => p.id === socket.id);
-      if (playerIndex !== -1) {
-        const playerName = game.players[playerIndex].name;
-        game.players.splice(playerIndex, 1);
+      const index = game.players.findIndex(p => p.id === socket.id);
+      if (index !== -1) {
+        game.players.splice(index, 1);
+        io.to(roomId).emit('players-updated', game.players);
         if (game.players.length === 0) {
           gameRooms.delete(roomId);
-        } else {
-          io.to(roomId).emit('players-updated', game.players);
-          io.to(roomId).emit('error', `${playerName} disconnected`);
         }
       }
     });
   });
 });
 
-function generateNumericRoomId() {
-  const min = 100000;
-  const max = 999999;
-  return (Math.floor(Math.random() * (max - min + 1)) + min).toString();
-}
-
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('=================================');
-  console.log('NUMBER GUESSING GAME SERVER');
-  console.log('=================================');
   console.log(`Server running on port ${PORT}`);
-  console.log('=================================');
 });
