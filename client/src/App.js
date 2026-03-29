@@ -5,6 +5,7 @@ import './styles/App.css';
 const SERVER_URL = 'https://number-game-backent.onrender.com';
 
 function App() {
+  // ALL HOOKS MUST BE AT THE TOP - NO CONDITIONAL HOOKS!
   const [socket, setSocket] = useState(null);
   const [roomId, setRoomId] = useState(null);
   const [playerId, setPlayerId] = useState(null);
@@ -24,6 +25,8 @@ function App() {
   const [clueInput, setClueInput] = useState('');
   const [clueGuessInput, setClueGuessInput] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [numberInput, setNumberInput] = useState(''); // For setting number
+  const [joinRoomInput, setJoinRoomInput] = useState(''); // For join room
 
   useEffect(() => {
     const newSocket = io(SERVER_URL);
@@ -103,15 +106,15 @@ function App() {
     }
   };
 
-  const handleJoinGame = (enteredRoomId) => {
-    if (playerName && socket) {
-      socket.emit('join-game', { roomId: enteredRoomId, playerName });
+  const handleJoinGame = () => {
+    if (playerName && socket && joinRoomInput) {
+      socket.emit('join-game', { roomId: joinRoomInput, playerName });
     }
   };
 
-  const handleSetNumber = (number) => {
-    if (socket && roomId) {
-      socket.emit('set-number', { roomId, number });
+  const handleSetNumber = () => {
+    if (socket && roomId && numberInput) {
+      socket.emit('set-number', { roomId, number: parseInt(numberInput) });
     }
   };
 
@@ -130,8 +133,26 @@ function App() {
     }
   };
 
+  // Helper to check if both players are ready
+  const bothReady = players.length === 2 && players.every(p => p.ready);
+  const currentPlayer = players.find(p => p.id === playerId);
+  const opponent = players.find(p => p.id !== playerId);
+  const isMyTurn = currentTurn === playerId;
+  const isGuessPhase = phase === 'guess' && isMyTurn;
+  const isCluePhase = phase === 'clueAndGuess' && isMyTurn;
+
+  // Connection failed screen
   if (connectionStatus === 'failed') {
-    return <div className="container"><h1>Cannot connect to server. Please try again.</h1><button onClick={() => window.location.reload()}>Retry</button></div>;
+    return (
+      <div className="container">
+        <h1>🎮 Number Guessing Game</h1>
+        <div className="card">
+          <h2>Cannot connect to server</h2>
+          <p>Please check your internet connection and try again.</p>
+          <button onClick={() => window.location.reload()}>Retry</button>
+        </div>
+      </div>
+    );
   }
 
   // Name Entry Screen
@@ -141,7 +162,13 @@ function App() {
         <h1>🎮 Number Guessing Game</h1>
         <div className="card">
           <h2>Enter Your Name</h2>
-          <input type="text" placeholder="Your name" value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSetName()} />
+          <input 
+            type="text" 
+            placeholder="Your name" 
+            value={nameInput} 
+            onChange={(e) => setNameInput(e.target.value)} 
+            onKeyPress={(e) => e.key === 'Enter' && handleSetName()} 
+          />
           <button onClick={handleSetName}>Continue</button>
         </div>
       </div>
@@ -157,8 +184,14 @@ function App() {
           <h2>Welcome, {playerName}!</h2>
           <button onClick={handleCreateGame}>Create Game Room</button>
           <div className="divider">OR</div>
-          <input type="text" placeholder="Enter 6-digit Room Code" maxLength="6" id="joinRoomInput" />
-          <button onClick={() => handleJoinGame(document.getElementById('joinRoomInput').value)}>Join Game</button>
+          <input 
+            type="text" 
+            placeholder="Enter 6-digit Room Code" 
+            maxLength="6" 
+            value={joinRoomInput}
+            onChange={(e) => setJoinRoomInput(e.target.value)}
+          />
+          <button onClick={handleJoinGame}>Join Game</button>
         </div>
       </div>
     );
@@ -166,9 +199,7 @@ function App() {
 
   // Game Room (Set Number)
   if (!gameStarted) {
-    const currentPlayer = players.find(p => p.id === playerId);
-    const bothReady = players.length === 2 && players.every(p => p.ready);
-    const [number, setNumber] = useState('');
+    const playerReady = currentPlayer?.ready;
     
     return (
       <div className="container">
@@ -183,28 +214,27 @@ function App() {
               </div>
             ))}
           </div>
-          {!currentPlayer?.ready ? (
+          {!playerReady ? (
             <div>
               <h3>Set Your Secret Number</h3>
-              <input type="number" placeholder="0-100" value={number} onChange={(e) => setNumber(e.target.value)} />
-              <button onClick={() => handleSetNumber(parseInt(number))}>Set Number</button>
+              <input 
+                type="number" 
+                placeholder="0-100" 
+                value={numberInput} 
+                onChange={(e) => setNumberInput(e.target.value)} 
+              />
+              <button onClick={handleSetNumber}>Set Number</button>
             </div>
           ) : !bothReady ? (
             <p>Waiting for opponent to set their number...</p>
           ) : null}
-          {bothReady && <p>Game starting...</p>}
+          {bothReady && <p>🎮 Game starting...</p>}
         </div>
       </div>
     );
   }
 
-  // Game Board
-  const currentPlayer = players.find(p => p.id === playerId);
-  const opponent = players.find(p => p.id !== playerId);
-  const isMyTurn = currentTurn === playerId;
-  const isGuessPhase = phase === 'guess' && isMyTurn;
-  const isCluePhase = phase === 'clueAndGuess' && isMyTurn;
-
+  // Game Board - Winner Screen
   if (winner) {
     const isWinner = winner.name === currentPlayer?.name;
     return (
@@ -220,6 +250,7 @@ function App() {
     );
   }
 
+  // Game Board - Main Game
   return (
     <div className="container">
       <h1>🎮 Number Guessing Game</h1>
@@ -243,7 +274,13 @@ function App() {
         {isGuessPhase ? (
           <div className="guess-section">
             <h2>Guess {opponent?.name}'s Number</h2>
-            <input type="number" placeholder="Enter your guess (0-100)" value={guessInput} onChange={(e) => setGuessInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleMakeGuess()} />
+            <input 
+              type="number" 
+              placeholder="Enter your guess (0-100)" 
+              value={guessInput} 
+              onChange={(e) => setGuessInput(e.target.value)} 
+              onKeyPress={(e) => e.key === 'Enter' && handleMakeGuess()} 
+            />
             <button onClick={handleMakeGuess}>SUBMIT GUESS</button>
           </div>
         ) : isCluePhase ? (
@@ -255,7 +292,13 @@ function App() {
               <button className={clueInput === 'below' ? 'selected' : ''} onClick={() => setClueInput('below')}>⬇️ BELOW</button>
             </div>
             <h2>Now Guess {opponent?.name}'s Number</h2>
-            <input type="number" placeholder="Enter your guess (0-100)" value={clueGuessInput} onChange={(e) => setClueGuessInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleClueAndGuess()} />
+            <input 
+              type="number" 
+              placeholder="Enter your guess (0-100)" 
+              value={clueGuessInput} 
+              onChange={(e) => setClueGuessInput(e.target.value)} 
+              onKeyPress={(e) => e.key === 'Enter' && handleClueAndGuess()} 
+            />
             <button onClick={handleClueAndGuess}>SUBMIT CLUE & GUESS</button>
           </div>
         ) : (
