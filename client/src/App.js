@@ -5,7 +5,6 @@ import './styles/App.css';
 const SERVER_URL = 'https://number-game-backent.onrender.com';
 
 function App() {
-  // ALL HOOKS AT THE TOP
   const [socket, setSocket] = useState(null);
   const [roomId, setRoomId] = useState(null);
   const [playerId, setPlayerId] = useState(null);
@@ -18,7 +17,6 @@ function App() {
   const [winner, setWinner] = useState(null);
   const [guesses, setGuesses] = useState([]);
   const [lastGuess, setLastGuess] = useState(null);
-  const [autoClue, setAutoClue] = useState('');
   const [error, setError] = useState('');
   const [gameMessage, setGameMessage] = useState('');
   const [guessInput, setGuessInput] = useState('');
@@ -27,87 +25,105 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [numberInput, setNumberInput] = useState('');
   const [joinRoomInput, setJoinRoomInput] = useState('');
-  const [isSettingNumber, setIsSettingNumber] = useState(false);
 
   useEffect(() => {
-    const newSocket = io(SERVER_URL);
-    
-    newSocket.on('connect', () => {
-      console.log('Connected to server');
-      setConnectionStatus('connected');
+    const newSocket = io(SERVER_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5
     });
     
-    newSocket.on('connect_error', () => {
-      console.log('Connection failed');
+    newSocket.on('connect', () => {
+      console.log('✅ Connected to server');
+      setConnectionStatus('connected');
+      setError('');
+    });
+    
+    newSocket.on('connect_error', (err) => {
+      console.log('❌ Connection error:', err.message);
       setConnectionStatus('failed');
+      setError('Cannot connect to server. Please refresh.');
+    });
+    
+    newSocket.on('disconnect', () => {
+      console.log('🔌 Disconnected from server');
+      setConnectionStatus('failed');
+      setError('Disconnected from server. Please refresh.');
     });
     
     newSocket.on('game-created', ({ roomId, playerId }) => {
-      console.log('Game created:', roomId);
+      console.log('🎮 Game created:', roomId);
       setRoomId(roomId);
       setPlayerId(playerId);
     });
     
     newSocket.on('game-joined', ({ roomId, playerId }) => {
-      console.log('Game joined:', roomId);
+      console.log('🎮 Game joined:', roomId);
       setRoomId(roomId);
       setPlayerId(playerId);
     });
     
     newSocket.on('players-updated', (updatedPlayers) => {
-      console.log('Players updated:', updatedPlayers);
+      console.log('👥 Players updated:', updatedPlayers);
       setPlayers(updatedPlayers);
     });
     
     newSocket.on('game-started', (data) => {
-      console.log('Game started!', data);
+      console.log('🚀 GAME STARTED!', data);
       setGameStarted(true);
       setCurrentTurn(data.currentTurn);
       setPhase(data.phase);
       setPlayers(data.players);
-      setGameMessage(`${data.startingPlayer} guesses first!`);
-      setTimeout(() => setGameMessage(''), 3000);
+      setGameMessage(`Game started! ${data.startingPlayer} guesses first.`);
+      setTimeout(() => setGameMessage(''), 4000);
     });
     
     newSocket.on('guess-made', ({ guesser, guess, waitingFor, autoClue, lastGuess }) => {
-      console.log('Guess made:', guesser, guess);
+      console.log('🔍 Guess made:', guesser, guess);
       setPhase('clueAndGuess');
-      setCurrentTurn(players.find(p => p.name === waitingFor)?.id);
+      const waitingPlayer = players.find(p => p.name === waitingFor);
+      if (waitingPlayer) {
+        setCurrentTurn(waitingPlayer.id);
+      }
       setLastGuess(lastGuess);
-      setAutoClue(autoClue);
       setGameMessage(`${guesser} guessed ${guess}! Your turn to give clue and guess.`);
-      setTimeout(() => setGameMessage(''), 3000);
+      setTimeout(() => setGameMessage(''), 4000);
     });
     
     newSocket.on('clue-and-guess-result', ({ responder, clue, guess, nextGuesser, guesses, lastGuess }) => {
-      console.log('Clue and guess result:', responder, clue, guess);
-      setCurrentTurn(players.find(p => p.name === nextGuesser)?.id);
+      console.log('💡 Clue result:', responder, clue, guess);
+      const nextPlayer = players.find(p => p.name === nextGuesser);
+      if (nextPlayer) {
+        setCurrentTurn(nextPlayer.id);
+      }
       setPhase('clueAndGuess');
       setGuesses(guesses);
       setLastGuess(lastGuess);
       setGameMessage(`${responder} gave clue: ${clue}. Your turn!`);
-      setTimeout(() => setGameMessage(''), 3000);
+      setTimeout(() => setGameMessage(''), 4000);
     });
     
     newSocket.on('game-over', ({ winner, correctNumber }) => {
-      console.log('Game over:', winner);
+      console.log('🏆 GAME OVER!', winner);
       setWinner({ name: winner, correctNumber });
     });
     
     newSocket.on('error', (msg) => {
-      console.log('Error:', msg);
+      console.log('⚠️ Error:', msg);
       setError(msg);
-      setTimeout(() => setError(''), 3000);
+      setTimeout(() => setError(''), 4000);
     });
     
     setSocket(newSocket);
     
-    return () => newSocket.close();
-  }, []);
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [players]);
 
   const handleSetName = () => {
     if (nameInput.trim()) {
-      setPlayerName(nameInput);
+      setPlayerName(nameInput.trim());
     }
   };
 
@@ -120,8 +136,14 @@ function App() {
 
   const handleJoinGame = () => {
     if (playerName && socket && joinRoomInput) {
-      console.log('Joining game:', joinRoomInput);
-      socket.emit('join-game', { roomId: joinRoomInput, playerName });
+      const cleanRoomId = joinRoomInput.replace(/\D/g, '');
+      if (cleanRoomId.length === 6) {
+        console.log('Joining game:', cleanRoomId);
+        socket.emit('join-game', { roomId: cleanRoomId, playerName });
+      } else {
+        setError('Please enter a valid 6-digit room code');
+        setTimeout(() => setError(''), 3000);
+      }
     }
   };
 
@@ -129,8 +151,7 @@ function App() {
     if (socket && roomId && numberInput) {
       const num = parseInt(numberInput);
       if (num >= 0 && num <= 100) {
-        console.log('Setting number:', num, 'for room:', roomId);
-        setIsSettingNumber(true);
+        console.log('Setting number:', num);
         socket.emit('set-number', { roomId, number: num });
       } else {
         setError('Number must be between 0 and 100');
@@ -181,8 +202,9 @@ function App() {
       <div className="container">
         <h1>🎮 Number Guessing Game</h1>
         <div className="card">
-          <h2>Cannot connect to server</h2>
+          <h2>❌ Cannot connect to server</h2>
           <p>Please check your internet connection.</p>
+          <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>Server: {SERVER_URL}</p>
           <button onClick={() => window.location.reload()}>Retry</button>
         </div>
       </div>
@@ -238,6 +260,7 @@ function App() {
     return (
       <div className="container">
         <h1>🎮 Number Guessing Game</h1>
+        {error && <div className="error">{error}</div>}
         <div className="card">
           <h2>Game Room: {roomId}</h2>
           <p>Share this code with your friend</p>
@@ -261,7 +284,7 @@ function App() {
             </div>
           ) : !bothReady ? (
             <div>
-              <p>Waiting for opponent to set their number...</p>
+              <p>⏳ Waiting for opponent to set their number...</p>
               <div className="loader"></div>
             </div>
           ) : null}
@@ -339,7 +362,10 @@ function App() {
             <button onClick={handleClueAndGuess}>SUBMIT CLUE & GUESS</button>
           </div>
         ) : (
-          <div className="waiting">Waiting for {opponent?.name}...</div>
+          <div className="waiting">
+            <div className="loader"></div>
+            <p>Waiting for {opponent?.name}...</p>
+          </div>
         )}
 
         <div className="history">
