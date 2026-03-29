@@ -5,7 +5,7 @@ import './styles/App.css';
 const SERVER_URL = 'https://number-game-backent.onrender.com';
 
 function App() {
-  // ALL HOOKS MUST BE AT THE TOP - NO CONDITIONAL HOOKS!
+  // ALL HOOKS AT THE TOP
   const [socket, setSocket] = useState(null);
   const [roomId, setRoomId] = useState(null);
   const [playerId, setPlayerId] = useState(null);
@@ -25,35 +25,42 @@ function App() {
   const [clueInput, setClueInput] = useState('');
   const [clueGuessInput, setClueGuessInput] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
-  const [numberInput, setNumberInput] = useState(''); // For setting number
-  const [joinRoomInput, setJoinRoomInput] = useState(''); // For join room
+  const [numberInput, setNumberInput] = useState('');
+  const [joinRoomInput, setJoinRoomInput] = useState('');
+  const [isSettingNumber, setIsSettingNumber] = useState(false);
 
   useEffect(() => {
     const newSocket = io(SERVER_URL);
     
     newSocket.on('connect', () => {
+      console.log('Connected to server');
       setConnectionStatus('connected');
     });
     
     newSocket.on('connect_error', () => {
+      console.log('Connection failed');
       setConnectionStatus('failed');
     });
     
     newSocket.on('game-created', ({ roomId, playerId }) => {
+      console.log('Game created:', roomId);
       setRoomId(roomId);
       setPlayerId(playerId);
     });
     
     newSocket.on('game-joined', ({ roomId, playerId }) => {
+      console.log('Game joined:', roomId);
       setRoomId(roomId);
       setPlayerId(playerId);
     });
     
     newSocket.on('players-updated', (updatedPlayers) => {
+      console.log('Players updated:', updatedPlayers);
       setPlayers(updatedPlayers);
     });
     
     newSocket.on('game-started', (data) => {
+      console.log('Game started!', data);
       setGameStarted(true);
       setCurrentTurn(data.currentTurn);
       setPhase(data.phase);
@@ -63,6 +70,7 @@ function App() {
     });
     
     newSocket.on('guess-made', ({ guesser, guess, waitingFor, autoClue, lastGuess }) => {
+      console.log('Guess made:', guesser, guess);
       setPhase('clueAndGuess');
       setCurrentTurn(players.find(p => p.name === waitingFor)?.id);
       setLastGuess(lastGuess);
@@ -72,6 +80,7 @@ function App() {
     });
     
     newSocket.on('clue-and-guess-result', ({ responder, clue, guess, nextGuesser, guesses, lastGuess }) => {
+      console.log('Clue and guess result:', responder, clue, guess);
       setCurrentTurn(players.find(p => p.name === nextGuesser)?.id);
       setPhase('clueAndGuess');
       setGuesses(guesses);
@@ -81,10 +90,12 @@ function App() {
     });
     
     newSocket.on('game-over', ({ winner, correctNumber }) => {
+      console.log('Game over:', winner);
       setWinner({ name: winner, correctNumber });
     });
     
     newSocket.on('error', (msg) => {
+      console.log('Error:', msg);
       setError(msg);
       setTimeout(() => setError(''), 3000);
     });
@@ -92,7 +103,7 @@ function App() {
     setSocket(newSocket);
     
     return () => newSocket.close();
-  }, [players]);
+  }, []);
 
   const handleSetName = () => {
     if (nameInput.trim()) {
@@ -102,41 +113,64 @@ function App() {
 
   const handleCreateGame = () => {
     if (playerName && socket) {
+      console.log('Creating game for:', playerName);
       socket.emit('create-game', playerName);
     }
   };
 
   const handleJoinGame = () => {
     if (playerName && socket && joinRoomInput) {
+      console.log('Joining game:', joinRoomInput);
       socket.emit('join-game', { roomId: joinRoomInput, playerName });
     }
   };
 
   const handleSetNumber = () => {
     if (socket && roomId && numberInput) {
-      socket.emit('set-number', { roomId, number: parseInt(numberInput) });
+      const num = parseInt(numberInput);
+      if (num >= 0 && num <= 100) {
+        console.log('Setting number:', num, 'for room:', roomId);
+        setIsSettingNumber(true);
+        socket.emit('set-number', { roomId, number: num });
+      } else {
+        setError('Number must be between 0 and 100');
+        setTimeout(() => setError(''), 3000);
+      }
     }
   };
 
   const handleMakeGuess = () => {
     if (socket && roomId && guessInput) {
-      socket.emit('make-guess', { roomId, guess: parseInt(guessInput) });
-      setGuessInput('');
+      const guess = parseInt(guessInput);
+      if (guess >= 0 && guess <= 100) {
+        console.log('Making guess:', guess);
+        socket.emit('make-guess', { roomId, guess });
+        setGuessInput('');
+      } else {
+        setError('Guess must be between 0 and 100');
+        setTimeout(() => setError(''), 3000);
+      }
     }
   };
 
   const handleClueAndGuess = () => {
     if (socket && roomId && clueInput && clueGuessInput) {
-      socket.emit('clue-and-guess', { roomId, clue: clueInput, guess: parseInt(clueGuessInput) });
-      setClueInput('');
-      setClueGuessInput('');
+      const guess = parseInt(clueGuessInput);
+      if (guess >= 0 && guess <= 100) {
+        console.log('Clue and guess:', clueInput, guess);
+        socket.emit('clue-and-guess', { roomId, clue: clueInput, guess });
+        setClueInput('');
+        setClueGuessInput('');
+      } else {
+        setError('Guess must be between 0 and 100');
+        setTimeout(() => setError(''), 3000);
+      }
     }
   };
 
-  // Helper to check if both players are ready
-  const bothReady = players.length === 2 && players.every(p => p.ready);
   const currentPlayer = players.find(p => p.id === playerId);
   const opponent = players.find(p => p.id !== playerId);
+  const bothReady = players.length === 2 && players.every(p => p.ready);
   const isMyTurn = currentTurn === playerId;
   const isGuessPhase = phase === 'guess' && isMyTurn;
   const isCluePhase = phase === 'clueAndGuess' && isMyTurn;
@@ -148,7 +182,7 @@ function App() {
         <h1>🎮 Number Guessing Game</h1>
         <div className="card">
           <h2>Cannot connect to server</h2>
-          <p>Please check your internet connection and try again.</p>
+          <p>Please check your internet connection.</p>
           <button onClick={() => window.location.reload()}>Retry</button>
         </div>
       </div>
@@ -189,7 +223,7 @@ function App() {
             placeholder="Enter 6-digit Room Code" 
             maxLength="6" 
             value={joinRoomInput}
-            onChange={(e) => setJoinRoomInput(e.target.value)}
+            onChange={(e) => setJoinRoomInput(e.target.value.replace(/\D/g, ''))}
           />
           <button onClick={handleJoinGame}>Join Game</button>
         </div>
@@ -226,7 +260,10 @@ function App() {
               <button onClick={handleSetNumber}>Set Number</button>
             </div>
           ) : !bothReady ? (
-            <p>Waiting for opponent to set their number...</p>
+            <div>
+              <p>Waiting for opponent to set their number...</p>
+              <div className="loader"></div>
+            </div>
           ) : null}
           {bothReady && <p>🎮 Game starting...</p>}
         </div>
@@ -234,7 +271,7 @@ function App() {
     );
   }
 
-  // Game Board - Winner Screen
+  // Winner Screen
   if (winner) {
     const isWinner = winner.name === currentPlayer?.name;
     return (
@@ -250,7 +287,7 @@ function App() {
     );
   }
 
-  // Game Board - Main Game
+  // Main Game Board
   return (
     <div className="container">
       <h1>🎮 Number Guessing Game</h1>
